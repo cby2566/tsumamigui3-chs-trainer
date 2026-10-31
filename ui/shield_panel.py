@@ -1,6 +1,6 @@
 """愛盾面板：布尔 C_INT —— 0=盾破、1=盾在。
 
-2026-11-01 复核结论（细节见 docs/RE_NOTES.md）：
+2026-11-01 复核结论：
 * 愛盾是**布尔**，不是三态。曾一度按 0/1/2 三态处理，已撤回。
   证据一：C_HEROINE_PARAMETER_BASE@SetSeed 内部是
           Clamp(nValue, 0, nLimit)，nLimit 由 ■ヒロイン愛盾上限取得 给出；

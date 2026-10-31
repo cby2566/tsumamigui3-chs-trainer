@@ -1,7 +1,6 @@
 """C_INT —— 本作（System 4.3）的金币/精力容器。
 
-完整的格式与算法笔记见 `docs/RE_NOTES.md`（ain 结构、分派表、踩过的坑都在那里）。
-下面是本模块用到的部分。
+结构、加密分派表与踩过的坑都写在本模块的注释里，下面是本模块用到的部分。
 
 结构体定义（ain 里 struct #191，共 4 个 int = 16 字节）：
 
@@ -233,7 +232,7 @@ def decode(fields: tuple[int, int, int, int], nkey: int = 0) -> int | None:
 def decode_loose(fields: tuple[int, int, int, int], nkey: int = 0) -> int | None:
     """宽松解码：容忍校验码被写成 `0xFF00 | 值` 或干脆坏掉的情况。
 
-    实测有四种形态（详见 docs/RE_NOTES.md 3.10）：
+    实测有四种形态：
 
     1. 两个码都正常 —— 严格 decode 直接成功；
     2. 主码是 `0xFF00 | 值`、备份码正常（受精值 20、精力 10）；
