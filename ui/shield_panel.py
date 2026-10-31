@@ -186,6 +186,7 @@ class ShieldPicker(tk.Toplevel):
             self,
             text=("候选是「解码为 0/1」的 C_INT。选中一行先试写，再切回游戏看状态栏："
                   "只有愛盾图标变了才是对的；如果变的是爱等级或其他数值，说明选错了，换一个候选。"
+                  "状态栏没变化就关掉再打开一次（游戏会缓存面板）。"
                   "试写会立即改内存；取消或关闭窗口会自动还原。"),
             style="Hint.TLabel", wraplength=770, justify="left",
         ).pack(anchor="w", padx=12, pady=(10, 4))
