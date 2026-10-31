@@ -7,6 +7,9 @@ C_INT 子页不是连续排布的，所以定位方式不是「按偏移算」�
     → 列出邻域里的其他 C_INT（女主记录的特征）
     → 试写 1/0，让用户回游戏确认是哪一位
     → 确认后绑定，之后勾选框直接读写。
+
+全是 0 时分不清候选，所以提供「逐个试写」向导：一次只改一个，
+用户只需回答游戏里的盾有没有出现/消失。
 """
 
 from __future__ import annotations
@@ -100,8 +103,11 @@ class ShieldRow(ttk.LabelFrame):
                     "没有找到值为 0/1 的合法 C_INT。\n"
                     "请确认游戏还开着；如果刚重启过，先重新定位金币/精力再试。")
                 return
+            other = "shield_sayoko" if self.kind == "shield_kaede" else "shield_kaede"
+            other_addr = self.session.address(other)
             self.app.log(f"{self.label}愛盾：找到 {len(cands)} 个 0/1 候选")
-            ShieldPicker(self, self.app, self.kind, self.label, cands)
+            ShieldPicker(self, self.app, self.kind, self.label, cands,
+                         exclude_near=other_addr)
 
         self.app.run_bg(job, done, busy="正在扫描愛盾候选…（约 20 秒）")
 
@@ -151,13 +157,18 @@ class ShieldRow(ttk.LabelFrame):
 class ShieldPicker(tk.Toplevel):
     """候选列表 + 试写。绑定前必须先让用户确认是哪一位女主的盾。"""
 
-    def __init__(self, master: ShieldRow, app, kind: str, label: str, cands):
+    def __init__(self, master: ShieldRow, app, kind: str, label: str, cands,
+                 exclude_near: int | None = None):
         super().__init__(master)
         self.master_row = master
         self.app = app
         self.session = app.session
         self.kind = kind
         self.label = label
+        # 另一位女主已经绑定时，把她记录附近的候选排掉，避免试写时误改她的盾。
+        if exclude_near is not None:
+            kept = [c for c in cands if abs(c.address - exclude_near) > 0x400]
+            cands = kept or list(cands)
         # 孤立候选（邻域里没有别的 C_INT）大概率不是女主记录，先折叠掉；
         # 实在只剩孤立候选时再全部显示。
         filtered = [c for c in cands if c.neighbours]
@@ -220,13 +231,23 @@ class ShieldPicker(tk.Toplevel):
             self.tree.selection_set(first[0])
             self.tree.focus(first[0])
 
+        if self.cands and all(c.value == 0 for c in self.cands):
+            ttk.Label(
+                self,
+                text=("当前候选全是 0，单看数字分不出来。点下面的「逐个试写（推荐）」："
+                      "工具会一次只改一个，你回游戏看盾有没有出现，回答是/不是即可。"),
+                foreground="#a35a00", wraplength=770, justify="left",
+            ).pack(anchor="w", padx=12, pady=(0, 4))
+
         self.status = ttk.Label(self, text="尚未试写", style="Hint.TLabel")
         self.status.pack(anchor="w", padx=12)
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=12, pady=10)
+        ttk.Button(bar, text="逐个试写（推荐）",
+                   command=self._open_wizard).pack(side="left")
         ttk.Button(bar, text="试写 1（盾在）",
-                   command=lambda: self._test(1)).pack(side="left")
+                   command=lambda: self._test(1)).pack(side="left", padx=(10, 0))
         ttk.Button(bar, text="试写 0（盾破）",
                    command=lambda: self._test(0)).pack(side="left", padx=6)
         ttk.Button(bar, text="还原试写",
@@ -235,6 +256,12 @@ class ShieldPicker(tk.Toplevel):
                    command=self._bind).pack(side="right")
         ttk.Button(bar, text="取消",
                    command=self.destroy).pack(side="right", padx=6)
+
+    def _open_wizard(self) -> None:
+        """关掉列表，进入一次只测一个的向导。"""
+        cands = list(self.cands)
+        self.destroy()
+        ShieldWizard(self.master_row, self.app, self.kind, self.label, cands)
 
     def _selected(self):
         sel = self.tree.selection()
@@ -247,7 +274,11 @@ class ShieldPicker(tk.Toplevel):
         if cand is None:
             messagebox.showinfo("没选目标", "先选中一行候选")
             return
-        old = self.session.read_bool_at(cand.address)
+        try:
+            old = self.session.read_bool_at(cand.address)
+        except WinMemError as exc:
+            messagebox.showerror("读取失败", str(exc))
+            return
         if old is None:
             messagebox.showwarning("地址失效", "这个候选已经不是 0/1 了，请重新扫描")
             return
@@ -301,4 +332,167 @@ class ShieldPicker(tk.Toplevel):
     def destroy(self) -> None:
         if not getattr(self, "_bound", False):
             self._restore()
+        super().destroy()
+
+
+class ShieldWizard(tk.Toplevel):
+    """逐个试写：一次只改一个候选，用户只需回答「盾有没有变化」。
+
+    这是给「全是 0」准备的：不靠数值区分，靠游戏里的可见结果区分。
+    """
+
+    def __init__(self, master: ShieldRow, app, kind: str, label: str, cands,
+                 exclude_near: int | None = None):
+        super().__init__(master)
+        self.master_row = master
+        self.app = app
+        self.session = app.session
+        self.kind = kind
+        self.label = label
+        if exclude_near is not None:
+            kept = [c for c in cands if abs(c.address - exclude_near) > 0x400]
+            cands = kept or list(cands)
+        self.cands = [c for c in cands if c.neighbours] or list(cands)
+        self.cands.sort(key=lambda c: (
+            -sum(1 for v in c.near_values if 0 <= v <= 10),
+            -len(c.neighbours), c.address))
+        self.index = -1
+        self._addr: int | None = None
+        self._old: int | None = None
+        self._target: int | None = None
+        self._bound = False
+        self._after_id = None
+
+        self.title(f"逐个试写：{label}")
+        self.geometry("660x360")
+        self.minsize(600, 320)
+        self.transient(master.winfo_toplevel())
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self._build()
+        self.update_idletasks()
+        try:
+            self.grab_set()
+        except tk.TclError:
+            pass
+
+    def _build(self) -> None:
+        ttk.Label(
+            self,
+            text=("点「开始试写」后，工具会一次只改一个候选。切回游戏打开状态栏，"
+                  "看愛盾图标有没有变化，然后回来点「是」或「没变化」。"
+                  "每次换下一个前都会自动还原。"),
+            style="Hint.TLabel", wraplength=610, justify="left",
+        ).pack(anchor="w", padx=14, pady=(12, 8))
+
+        self.step = ttk.Label(self, text="准备中…", style="Title.TLabel")
+        self.step.pack(anchor="w", padx=14)
+        self.info = ttk.Label(self, text="", style="Hint.TLabel",
+                              wraplength=610, justify="left")
+        self.info.pack(anchor="w", padx=14, pady=(4, 2))
+        self.detail = ttk.Label(self, text="", style="Hint.TLabel",
+                                wraplength=610, justify="left")
+        self.detail.pack(anchor="w", padx=14)
+        self.ask = ttk.Label(self, text="", wraplength=610, justify="left")
+        self.ask.pack(anchor="w", padx=14, pady=(10, 2))
+
+        bar = ttk.Frame(self)
+        bar.pack(fill="x", padx=14, pady=12)
+        self.btn_start = ttk.Button(bar, text="开始试写", command=self._start)
+        self.btn_start.pack(side="left")
+        self.btn_yes = ttk.Button(bar, text="出现了，就是她", command=self._bind)
+        self.btn_yes.pack(side="left", padx=(10, 0))
+        self.btn_yes.state(["disabled"])
+        self.btn_no = ttk.Button(bar, text="没变化，下一个", command=self._next)
+        self.btn_no.pack(side="left", padx=6)
+        self.btn_no.state(["disabled"])
+        ttk.Button(bar, text="手动选候选",
+                   command=self._manual).pack(side="left", padx=(14, 0))
+        ttk.Button(bar, text="退出", command=self.destroy).pack(side="right")
+
+    def _start(self) -> None:
+        self.btn_start.state(["disabled"])
+        self.btn_yes.state(["!disabled"])
+        self.btn_no.state(["!disabled"])
+        self._next()
+
+    def _restore_current(self) -> None:
+        if self._addr is not None and self._old is not None:
+            try:
+                self.session.test_bool(self._addr, self._old)
+            except Exception:                     # noqa: BLE001
+                pass
+        self._addr = None
+        self._old = None
+        self._target = None
+
+    def _next(self) -> None:
+        self._after_id = None
+        self._restore_current()
+        while True:
+            self.index += 1
+            if self.index >= len(self.cands):
+                self.step.configure(text="试完了")
+                self.info.configure(text="所有候选都试过了，没有确认到愛盾。")
+                self.detail.configure(text="")
+                self.ask.configure(text="可以点「手动选候选」按地址挑，或退出后重新扫描。")
+                self.btn_yes.state(["disabled"])
+                self.btn_no.state(["disabled"])
+                return
+            cand = self.cands[self.index]
+            try:
+                old = self.session.read_bool_at(cand.address)
+            except WinMemError:
+                continue
+            if old is None:
+                continue
+            target = 1 - old
+            try:
+                got = self.session.test_bool(cand.address, target)
+            except WinMemError:
+                continue
+            self._addr, self._old, self._target = cand.address, old, target
+            self.step.configure(
+                text=f"第 {self.index + 1} / {len(self.cands)} 个候选")
+            self.info.configure(
+                text=f"0x{cand.address:08X}：原值 {old} → 已试写 {got}")
+            near = " ".join(str(v) for v in cand.near_values[:10]) or "-"
+            self.detail.configure(text=f"邻近 C_INT：{near}")
+            if target == 1:
+                self.ask.configure(
+                    text=f"切回游戏打开状态栏，看{self.label}的盾有没有出现。")
+                self.btn_yes.configure(text="出现了，就是她")
+            else:
+                self.ask.configure(
+                    text=f"切回游戏打开状态栏，看{self.label}的盾有没有消失。")
+                self.btn_yes.configure(text="消失了，就是她")
+            self.btn_yes.state(["!disabled"])
+            self.btn_no.state(["!disabled"])
+            return
+
+    def _bind(self) -> None:
+        if self._addr is None:
+            return
+        try:
+            value = self.session.bind_bool(self.kind, self._addr)
+        except WinMemError as exc:
+            messagebox.showerror("绑定失败", str(exc))
+            return
+        self._bound = True
+        self.master_row._on_bound(value)
+        self.destroy()
+
+    def _manual(self) -> None:
+        cands = list(self.cands)
+        self.destroy()
+        ShieldPicker(self.master_row, self.app, self.kind, self.label, cands)
+
+    def destroy(self) -> None:
+        if self._after_id is not None:
+            try:
+                self.after_cancel(self._after_id)
+            except tk.TclError:
+                pass
+            self._after_id = None
+        if not getattr(self, "_bound", False):
+            self._restore_current()
         super().destroy()
