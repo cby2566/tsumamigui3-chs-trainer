@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import time
+from dataclasses import dataclass
 from datetime import datetime
 
 from cint import (BoolCandidate, Candidate, DATE_MAX, ENERGY_MAX,
@@ -38,6 +39,23 @@ DEFAULT_CONFIG = {
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "config.json")
+
+
+@dataclass
+class AutoResult:
+    """一次自动定位的结果。
+
+    missing 只包含「有变量号、但这次没绑上」的项；愛盾这类没有变量号的
+    目标不参与统计，否则重试逻辑会永远等不到 complete。
+    """
+
+    bound: dict[str, int]
+    missing: list[str]
+    message: str
+
+    @property
+    def complete(self) -> bool:
+        return not self.missing
 
 
 def load_config() -> dict:
@@ -121,43 +139,59 @@ class Session:
         size = self.proc.total_writable()
         msg = f"已附加 {exe} (pid={pids[0]})，可写私有内存 {size / 1048576:.1f} MB"
         auto = self.autolocate()
-        if auto:
-            msg += "\n" + auto
+        if auto.message:
+            msg += "\n" + auto.message
         return msg
 
-    def autolocate(self) -> str:
-        """附加后按变量号自动绑定金币 / 精力，不需要人从界面读数字。
+    def autolocate(self, reset: bool = True) -> AutoResult:
+        """按变量号自动绑定所有受保护数值。
 
-        走的是 VM 变量槽表（见 vmslot.py）：变量号是编译期定死的，
-        重启游戏后堆地址会全变，但编号不变，所以这条路最稳。
+        reset=True 时先丢掉「按变量号」绑定的旧地址再重建。读档会让游戏销毁
+        并重建值对象，旧地址可能指向已释放的内存，留着比没有更危险；手动定位
+        的地址不在 from_var_id 里，不会被这个开关影响。
         """
         if not self.attached or self.proc is None:
-            return ""
+            return AutoResult({}, list(self.TARGETS), "未附加游戏")
+
+        if reset:
+            for kind in list(self.from_var_id):
+                self.addresses[kind] = None
+                self.from_var_id.discard(kind)
+
         want = {vid: kind for kind, vid in self.var_ids.items()
                 if kind in self.TARGETS}
         if not want:
-            return ""
+            return AutoResult({}, [], "")
+
         try:
             slots = scan_slots(self.proc, set(want))
         except WinMemError:
-            return "自动定位失败，需要手动定位"
-        got = []
+            return AutoResult({}, list(want.values()),
+                              "自动定位失败（读取进程内存出错），请手动定位")
+
+        bound: dict[str, int] = {}
+        missing: list[str] = []
         for vid, kind in want.items():
             s = slots.get(vid)
-            if s is None:
-                continue
+            top = self.TARGETS.get(kind)
             # 槽本身会一直留着，但读档时游戏会重建值对象，槽里的指针未必跟着更新。
             # 实测读档后金币槽指向的对象被复用，读出来是 1914572585（远超上限）。
             # 所以只认「值在合法范围内」的槽，宁可退回去手动定位，也不能绑到野指针上。
-            top = self.TARGETS.get(kind)
-            if s.value is None or top is None or not (0 <= s.value <= top):
+            if s is None or s.value is None or top is None or not (0 <= s.value <= top):
+                missing.append(kind)
                 continue
             self.addresses[kind] = s.value_addr
             self.from_var_id.add(kind)
-            got.append(f"{KIND_LABELS.get(kind, kind)} {s.value} (0x{s.value_addr:08X})")
-        if not got:
-            return "自动定位没命中（可能刚读过档，对象已重建），请手动定位"
-        return "自动定位：" + "、".join(got)
+            bound[kind] = s.value
+
+        lines = [f"自动定位 {len(bound)}/{len(want)} 项"]
+        if bound:
+            lines.append("；".join(f"{KIND_LABELS.get(k, k)} {v}"
+                                   for k, v in bound.items()))
+        if missing:
+            names = "、".join(KIND_LABELS.get(k, k) for k in missing)
+            lines.append(f"未命中：{names}（读档可能还没完成，或值超出上限）")
+        return AutoResult(bound, missing, "\n".join(lines))
 
     def detach(self) -> None:
         if self.proc:

@@ -34,6 +34,7 @@ class ValuePanel(ttk.Frame):
         self._by_addr: dict[int, str] = {}
         self._suppress = False           # 程序自动换行时，别重复刷「选中」日志
         self._warned_stale = False       # 「界面可能没刷新」只提一次
+        self._warned_unreadable = False  # 「读不出值可能是读档」只提一次
         self._build(hint)
 
     # ---------- 界面 ----------
@@ -202,6 +203,7 @@ class ValuePanel(ttk.Frame):
         self._render([cur])
         self._select_addr(addr)
         self._fail_streak = 0
+        self._warned_unreadable = False
         if cur.decoded_loose is None:
             self.current_entry.set("")
             self.live.configure(text="当前：数据不自洽（点「设为」写一次即可修复）")
@@ -278,11 +280,16 @@ class ValuePanel(ttk.Frame):
             self._fail_streak += 1
             if self._fail_streak < 3:
                 return
-            # 地址是按变量号拿到的吗？是的话它一定没错 —— 解不出来只能说明
-            # C_INT 的数据坏了（主校验码和值对不上），点「设为」写一次就能修好。
-            # 这种情况不能去「重新定位」，否则会陷进反复扫描。
+            # 地址是按变量号拿到的吗？是的话它一定没错 —— 解不出来要么是刚读过档
+            # （槽还指着已释放的对象），要么是 C_INT 数据不自洽（校验码对不上）。
+            # 两种情况都不能在这里盲目重扫：前者应该点顶部「重新自动定位」，
+            # 后者点一次「设为」就会写回自洽的 16 字节。
             if self.kind in self.session.from_var_id:
-                self.live.configure(text="当前：数据不自洽（点「设为」写一次即可修复）")
+                self.live.configure(text="当前：读不出值")
+                if not self._warned_unreadable:
+                    self._warned_unreadable = True
+                    self.app.log(f"{self.label}读不出值：刚读过档就点顶部「重新自动定位」；"
+                                 f"否则是数据不自洽，点「设为」写一次即可修复")
                 return
             self.live.configure(text="当前：地址已失效")
             self._try_recover()
