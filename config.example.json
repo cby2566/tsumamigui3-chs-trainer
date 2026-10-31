@@ -6,6 +6,8 @@
   "backup_saves": true,
   "var_ids": {
     "money": 7779,
-    "energy": 7751
+    "energy": 7751,
+    "date": 7515,
+    "fertilize": 8264
   }
 }

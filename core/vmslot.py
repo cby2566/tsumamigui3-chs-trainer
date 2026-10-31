@@ -31,7 +31,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from cint import decode
+from cint import decode, decode_loose
 from scan import CHUNK
 
 SLOT_STRIDE = 0x70          # 槽的排布间距
@@ -40,8 +40,10 @@ SLOT_READ = 0x20            # 判定一个槽需要读到的字节数
 
 # 实测得到的变量号；不同版本可能不同，所以允许从 config.json 覆盖
 DEFAULT_VAR_IDS = {
-    "money": 7779,          # 0x1E63
-    "energy": 7751,         # 0x1E47
+    "money": 7779,          # 0x1E63  C_GAME_PARAMETER.m_nMoney
+    "energy": 7751,         # 0x1E47  C_GAME_PARAMETER.m_nEnergy
+    "date": 7515,           # 0x1D5B  C_GAME_PARAMETER.m_nDate（存的是经过天数）
+    "fertilize": 8264,      # 0x2048  C_HEROINE_PARAMETER_BASE.m_nSemen（海夕里）
 }
 
 
@@ -95,9 +97,18 @@ def scan_slots(proc, want: set[int] | None = None) -> dict[int, Slot]:
                         continue
                     ptr = struct.unpack_from("<I", b, 0)[0]
                     cb = proc.read(ptr, 16)
-                    d = decode(struct.unpack("<4I", cb)) if len(cb) == 16 else None
-                    if d is None and want is None:
-                        continue        # 全量枚举时靠解码排掉假槽
+                    fields = struct.unpack("<4I", cb) if len(cb) == 16 else None
+                    if fields is None:
+                        continue
+                    if want is None:
+                        # 全量枚举要靠严格解码排掉假槽（否则堆上全是 0x10/0x10/4）
+                        d = decode(fields)
+                        if d is None:
+                            continue
+                    else:
+                        # 指定了变量号，槽一定是我们想要的，用宽松解码读值，
+                        # 免得主校验码被写成 0xFF00|值 的数值被当成「不可读」
+                        d = decode_loose(fields)
                     out[vid] = Slot(s, ptr, d, vid)
             off += max(got - 12, 4)
     return out

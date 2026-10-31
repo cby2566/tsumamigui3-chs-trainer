@@ -69,6 +69,8 @@ KEY_B = 0xAAAAAAAA          # 反汇编里是 -0x55555556
 
 MONEY_MAX = 999_999         # C_GAME_PARAMETER@SetMoney 里的 Clamp(0, 0xF423F)
 ENERGY_MAX = 20             # C_GAME_PARAMETER@SetEnergy 里的 Clamp(0, 0x14)
+DATE_MAX = 9999             # m_nDate 存的是「经过天数」，SSG 给的显示上限也是 9999
+FERTILIZE_MAX = 999         # 受精值上限，来自 SSG 的 :calc,0,999
 MONEY_MEMBER_OFFSET = 112   # m_nMoney 在 C_GAME_PARAMETER 内的偏移
 ENERGY_MEMBER_OFFSET = 96   # m_nEnergy，用于邻接确认
 
@@ -223,6 +225,54 @@ def decode(fields: tuple[int, int, int, int], nkey: int = 0) -> int | None:
     return nv
 
 
+def decode_loose(fields: tuple[int, int, int, int], nkey: int = 0) -> int | None:
+    """宽松解码：主码对不上时，只要「明文和备份码一致」就认明文。
+
+    实测有些 C_INT 的 m_nCode 编码的是 `0xFF00 | 值` 而不是值本身
+    （受精值 20 → 主码解出 0xFF14，精力 10 → 主码解出 0xFF0A），
+    而 m_nValue 和 m_nBackUpCode 都是正确的。严格 decode 要求两个码
+    解出同一个数，遇到这种就会判成「数据损坏」。
+
+    这类数值游戏自己能正常读（界面显示没问题），所以定位和显示时
+    用这个宽松版本；只有写回校验仍然走严格 decode。
+    """
+    d = decode(fields, nkey)
+    if d is not None:
+        return d
+    v, code, backup, pattern = fields
+    if code == 0 and backup == 0:
+        return None
+    k = xor_key(v & MASK32)
+    nb = decrypt(backup & MASK32, k, pattern & 0xFFFF)
+    return v if nb == (v & MASK32) else None
+
+
+def days_to_date(days: int) -> str:
+    """把 m_nDate 的值转成「X月Y日」。
+
+    实测这个字段存的是「从当年 1 月 1 日算起的天数」，不是从剧情开始算：
+    8月4日 存的是 216（31+28+31+30+31+30+31+4），按平年算。
+    """
+    if days < 1:
+        return "—"
+    months = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+    m, left = 1, days
+    for length in months:
+        if left <= length:
+            return f"{m}月{left}日"
+        left -= length
+        m += 1
+    return f"第 {days} 天"
+
+
+def date_to_days(month: int, day: int) -> int:
+    """「X月Y日」转回天数，供需要反向换算时用。"""
+    months = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+    if not (1 <= month <= 12 and 1 <= day <= months[month - 1]):
+        raise ValueError(f"{month}月{day}日 不合法")
+    return sum(months[:month - 1]) + day
+
+
 @dataclass
 class Candidate:
     address: int
@@ -248,6 +298,11 @@ class Candidate:
     @property
     def decoded(self) -> int | None:
         return decode(self.fields)
+
+    @property
+    def decoded_loose(self) -> int | None:
+        """宽松解码，见模块里的 decode_loose()。用于定位和显示，不用于写回校验。"""
+        return decode_loose(self.fields)
 
     def __str__(self) -> str:
         return (f"0x{self.address:08X}  值={self.value}  pattern={self.cord}/"

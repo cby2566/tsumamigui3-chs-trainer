@@ -16,13 +16,16 @@ RECOVER_TIMEOUT = 30.0       # 后台重定位超过这个秒数就算卡住，�
 
 
 class ValuePanel(ttk.Frame):
-    def __init__(self, master, app, kind: str, label: str, max_value: int, hint: str = ""):
+    def __init__(self, master, app, kind: str, label: str, max_value: int,
+                 hint: str = "", show_fill: bool = True, describe=None):
         super().__init__(master, padding=12)
         self.app = app
         self.session = app.session
         self.kind = kind
         self.label = label
         self.max_value = max_value
+        self.show_fill = show_fill
+        self.describe = describe          # 可选：把数值转成人能读的说明（比如天数 -> 月日）
         self.lock_target: int | None = None
         self._last_good: int | None = None
         self._recovering = False
@@ -67,8 +70,9 @@ class ValuePanel(ttk.Frame):
         self.target = tk.StringVar(value=str(self.max_value))
         ttk.Entry(act, textvariable=self.target, width=12).pack(side="left", padx=8)
         ttk.Button(act, text="设为", width=7, command=self.on_set).pack(side="left", padx=2)
-        ttk.Button(act, text="加满", width=7,
-                   command=lambda: self._apply(self.max_value)).pack(side="left", padx=2)
+        if self.show_fill:
+            ttk.Button(act, text="加满", width=7,
+                       command=lambda: self._apply(self.max_value)).pack(side="left", padx=2)
         ttk.Button(act, text="+1", width=5,
                    command=lambda: self._apply_delta(1)).pack(side="left", padx=2)
         ttk.Button(act, text="-1", width=5,
@@ -107,6 +111,15 @@ class ValuePanel(ttk.Frame):
 
         self.app.run_bg(job, lambda r: self._show_candidates(*r),
                         busy=f"正在扫描{self.label}…")
+
+    def _show_text(self, value: int) -> str:
+        """数值 + 可选的可读说明，比如 216（8月4日）。"""
+        if self.describe is not None:
+            try:
+                return f"{value}（{self.describe(value)}）"
+            except Exception:                             # noqa: BLE001
+                pass
+        return str(value)
 
     def _render(self, cands) -> None:
         """重建候选列表，并记住地址 → 行号的映射（用来按地址回选）。"""
@@ -165,14 +178,14 @@ class ValuePanel(ttk.Frame):
                 return
             cur = self.session.current(self.kind)
             if cur is not None:
-                self.app.log(f"{self.label}选中 0x{addr:08X}，当前值 {cur.decoded}")
+                self.app.log(f"{self.label}选中 0x{addr:08X}，当前值 {cur.decoded_loose}")
 
     def _bound_value(self) -> int | None:
         """已绑定地址当前解码出的值；没绑定、或解不出时返回 None。"""
         if self.session.address(self.kind) is None:
             return None
         cur = self.session.current(self.kind)
-        return cur.decoded if cur is not None else None
+        return cur.decoded_loose if cur is not None else None
 
     def adopt_auto(self) -> None:
         """附加时如果已经自动定位到地址，直接铺到界面上，不用人再点「定位」。
@@ -189,12 +202,12 @@ class ValuePanel(ttk.Frame):
         self._render([cur])
         self._select_addr(addr)
         self._fail_streak = 0
-        if cur.decoded is None:
+        if cur.decoded_loose is None:
             self.current_entry.set("")
             self.live.configure(text="当前：数据不自洽（点「设为」写一次即可修复）")
         else:
-            self.current_entry.set(str(cur.decoded))
-            self.live.configure(text=f"当前：{cur.decoded}")
+            self.current_entry.set(str(cur.decoded_loose))
+            self.live.configure(text=f"当前：{self._show_text(cur.decoded_loose)}")
 
     # ---------- 修改 ----------
 
@@ -209,10 +222,10 @@ class ValuePanel(ttk.Frame):
 
     def _apply_delta(self, delta: int) -> None:
         cur = self.session.current(self.kind)
-        if cur is None or cur.decoded is None:
+        if cur is None or cur.decoded_loose is None:
             messagebox.showinfo("还没定位", f"先定位{self.label}再说")
             return
-        self._apply(max(0, min(cur.decoded + delta, self.max_value)))
+        self._apply(max(0, min(cur.decoded_loose + delta, self.max_value)))
 
     def _apply(self, value: int) -> None:
         # 列表可能被一次空扫描清掉，但 session 里绑定的地址仍然是有效的，
@@ -258,7 +271,7 @@ class ValuePanel(ttk.Frame):
             self._fail_streak = 0
             return
         cur = self.session.current(self.kind)
-        shown = cur.decoded if cur is not None else None
+        shown = cur.decoded_loose if cur is not None else None
         if shown is None:
             # 游戏重写一个 C_INT 是分几次落盘的，读到中间态会「解不出来」。
             # 单次失败多半是撞上了那个瞬间，先别急着判死刑。
@@ -276,7 +289,7 @@ class ValuePanel(ttk.Frame):
             return
         self._fail_streak = 0
         self._last_good = shown
-        self.live.configure(text=f"当前：{shown}")
+        self.live.configure(text=f"当前：{self._show_text(shown)}")
         if self.lock_target is not None and shown != self.lock_target:
             try:
                 self.session.set_value(self.kind, self.lock_target)

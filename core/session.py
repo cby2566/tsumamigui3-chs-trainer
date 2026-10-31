@@ -8,14 +8,15 @@ import shutil
 import time
 from datetime import datetime
 
-from cint import (BoolCandidate, Candidate, ENERGY_MAX, MONEY_MAX, read_at,
-                  read_bool, scan as scan_cint, scan_bool, write_bool,
-                  write_money)
+from cint import (BoolCandidate, Candidate, DATE_MAX, ENERGY_MAX,
+                  FERTILIZE_MAX, MONEY_MAX, read_at, read_bool,
+                  scan as scan_cint, scan_bool, write_bool, write_money)
 from scan import Result, Scanner
 from vmslot import DEFAULT_VAR_IDS, scan_slots
 from winmem import Process, WinMemError, find_process
 
-KIND_LABELS = {"money": "金币", "energy": "精力",
+KIND_LABELS = {"money": "金币", "energy": "精力", "date": "日期",
+               "fertilize": "受精值",
                "shield_kaede": "海夕里愛盾", "shield_sayoko": "砂夜子愛盾"}
 
 DEFAULT_CONFIG = {
@@ -56,6 +57,8 @@ class Session:
     TARGETS = {
         "money": MONEY_MAX,
         "energy": ENERGY_MAX,
+        "date": DATE_MAX,
+        "fertilize": FERTILIZE_MAX,
         "shield_kaede": 1,
         "shield_sayoko": 1,
     }
@@ -128,12 +131,17 @@ class Session:
             s = slots.get(vid)
             if s is None:
                 continue
+            # 槽本身会一直留着，但读档时游戏会重建值对象，槽里的指针未必跟着更新。
+            # 实测读档后金币槽指向的对象被复用，读出来是 1914572585（远超上限）。
+            # 所以只认「值在合法范围内」的槽，宁可退回去手动定位，也不能绑到野指针上。
+            top = self.TARGETS.get(kind)
+            if s.value is None or top is None or not (0 <= s.value <= top):
+                continue
             self.addresses[kind] = s.value_addr
             self.from_var_id.add(kind)
-            shown = "数据不自洽" if s.value is None else s.value
-            got.append(f"{KIND_LABELS.get(kind, kind)} {shown} (0x{s.value_addr:08X})")
+            got.append(f"{KIND_LABELS.get(kind, kind)} {s.value} (0x{s.value_addr:08X})")
         if not got:
-            return "自动定位没命中（游戏可能还没进存档），需要手动定位"
+            return "自动定位没命中（可能刚读过档，对象已重建），请手动定位"
         return "自动定位：" + "、".join(got)
 
     def detach(self) -> None:
@@ -188,7 +196,7 @@ class Session:
         # 已经绑定的地址如果还解得这个值，直接用它，不用再全量扫。
         # （自动定位之后基本都走这条分支，只有地址真失效了才需要扫描。）
         cur = self.current(kind)
-        if cur is not None and cur.decoded == value:
+        if cur is not None and cur.decoded_loose == value:
             self.candidates = [cur]
             return self.candidates
 
@@ -273,7 +281,7 @@ class Session:
         new = self.current(kind)
         if new is None or new.decoded != value:
             raise WinMemError("写入后解码结果不一致")
-        old_text = old.decoded if (old is not None and old.decoded is not None) else "?"
+        old_text = old.decoded_loose if (old is not None and old.decoded_loose is not None) else "?"
         return f"{old_text} → {value}  (地址 0x{addr:08X})"
 
     # ---------- 通用搜索 ----------
