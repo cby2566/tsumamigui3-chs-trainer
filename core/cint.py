@@ -236,10 +236,15 @@ def decode_loose(fields: tuple[int, int, int, int], nkey: int = 0) -> int | None
     这类数值游戏自己能正常读（界面显示没问题），所以定位和显示时
     用这个宽松版本；只有写回校验仍然走严格 decode。
     """
+    v, code, backup, pattern = fields
     d = decode(fields, nkey)
     if d is not None:
+        # 还有更彻底的一种：连两个校验码都按 `0xFF00 | 值` 编码，
+        # 于是严格解码「成功」但解出 0xFF28(65320)，而明文是 40。
+        # 高字节为 0xFF 且低字节与明文一致时，认明文。
+        if d != v and v <= 0xFF and (d >> 8) == 0xFF and (d & 0xFF) == v:
+            return v
         return d
-    v, code, backup, pattern = fields
     if code == 0 and backup == 0:
         return None
     k = xor_key(v & MASK32)

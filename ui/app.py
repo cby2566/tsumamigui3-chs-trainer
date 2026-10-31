@@ -65,8 +65,12 @@ class App(tk.Tk):
         self.date_panel = ValuePanel(nb, self, "date", "日期", DATE_MAX,
                                      "，填从 1 月 1 日算起的天数，改动前先存档",
                                      show_fill=False, describe=days_to_date)
-        self.fert_panel = ValuePanel(nb, self, "fertilize", "受精值", FERTILIZE_MAX,
-                                     "，海夕里（其余三位当前为 0）")
+        self.fert_panel = ValuePanel(nb, self, "fertilize", "受精值·海夕里",
+                                     FERTILIZE_MAX, "，主人公")
+        self.fert2_panel = ValuePanel(nb, self, "fertilize_sayoko_a", "受精值·砂夜子①",
+                                      FERTILIZE_MAX, "，砂夜子")
+        self.fert3_panel = ValuePanel(nb, self, "fertilize_sayoko_b", "受精值·砂夜子②",
+                                      FERTILIZE_MAX, "，砂夜子")
         self.shield_panel = ShieldPanel(nb, self)
         # 「数值搜索」页签默认不挂：它扫的是裸内存值，而本作的值全是 C_INT，
         # 直接改 m_nValue 会被 Get() 的自愈逻辑改回去，改了等于没改。
@@ -75,7 +79,9 @@ class App(tk.Tk):
         nb.add(self.money_panel, text="  金币  ")
         nb.add(self.energy_panel, text="  精力  ")
         nb.add(self.date_panel, text="  日期  ")
-        nb.add(self.fert_panel, text="  受精值  ")
+        nb.add(self.fert_panel, text="  受精·海夕里  ")
+        nb.add(self.fert2_panel, text="  受精·砂夜子①  ")
+        nb.add(self.fert3_panel, text="  受精·砂夜子②  ")
         nb.add(self.shield_panel, text="  愛盾  ")
 
         log_frame = ttk.LabelFrame(self, text=" 日志 ", padding=(8, 4))
@@ -146,8 +152,8 @@ class App(tk.Tk):
             for line in str(msg).splitlines():
                 self.log(line)
             # 自动定位命中时，直接把地址铺到两个页签上，省掉手填数字那一步
-            for panel in (self.money_panel, self.energy_panel,
-                          self.date_panel, self.fert_panel):
+            for panel in (self.money_panel, self.energy_panel, self.date_panel,
+                          self.fert_panel, self.fert2_panel, self.fert3_panel):
                 panel.adopt_auto()
 
         self.run_bg(job, done, busy="正在附加…")
@@ -155,8 +161,9 @@ class App(tk.Tk):
     # ---------- 定时 ----------
 
     def _tick(self) -> None:
-        for panel in (self.money_panel, self.energy_panel,
-                      self.date_panel, self.fert_panel, self.shield_panel):
+        for panel in (self.money_panel, self.energy_panel, self.date_panel,
+                      self.fert_panel, self.fert2_panel, self.fert3_panel,
+                      self.shield_panel):
             try:
                 panel.tick()
             except Exception:                            # noqa: BLE001

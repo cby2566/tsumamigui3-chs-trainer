@@ -43,7 +43,9 @@ DEFAULT_VAR_IDS = {
     "money": 7779,          # 0x1E63  C_GAME_PARAMETER.m_nMoney
     "energy": 7751,         # 0x1E47  C_GAME_PARAMETER.m_nEnergy
     "date": 7515,           # 0x1D5B  C_GAME_PARAMETER.m_nDate（存的是经过天数）
-    "fertilize": 8264,      # 0x2048  C_HEROINE_PARAMETER_BASE.m_nSemen（海夕里）
+    "fertilize": 8264,      # 0x2048  海夕里的受精值（主人公）
+    "fertilize_sayoko_a": 8823,   # 0x2277  砂夜子 其一，实测 60
+    "fertilize_sayoko_b": 8889,   # 0x22B9  砂夜子 其二，实测 40
 }
 
 
