@@ -17,7 +17,8 @@ from vmslot import DEFAULT_VAR_IDS, scan_slots
 from winmem import Process, WinMemError, find_process
 
 KIND_LABELS = {"money": "金币", "energy": "精力", "date": "日期",
-               "fertilize": "受精值·海夕里",
+               "fertilize_kaede_1": "受精值·海夕里①",
+               "fertilize_kaede_2": "受精值·海夕里②",
                "fertilize_sayoko_1": "受精值·砂夜子①",
                "fertilize_sayoko_2": "受精值·砂夜子②",
                "fertilize_sayoko_3": "受精值·砂夜子③",
@@ -63,7 +64,8 @@ class Session:
         "energy": ENERGY_MAX,
         "date": DATE_MAX,
         # 受精值的上限按女主配置：海夕里 150、砂夜子 250（游戏里能看到的最大值）
-        "fertilize": FERTILIZE_MAX_KAEDE,
+        "fertilize_kaede_1": FERTILIZE_MAX_KAEDE,
+        "fertilize_kaede_2": FERTILIZE_MAX_KAEDE,
         "fertilize_sayoko_1": FERTILIZE_MAX_SAYOKO,
         "fertilize_sayoko_2": FERTILIZE_MAX_SAYOKO,
         "fertilize_sayoko_3": FERTILIZE_MAX_SAYOKO,

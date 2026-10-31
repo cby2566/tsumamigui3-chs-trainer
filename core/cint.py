@@ -251,8 +251,14 @@ def decode_loose(fields: tuple[int, int, int, int], nkey: int = 0) -> int | None
     if code == 0 and backup == 0:
         return None
     k = xor_key(v & MASK32)
-    nb = decrypt(backup & MASK32, k, pattern & 0xFFFF)
-    return v if nb == (v & MASK32) else None
+    # 第四种形态：只有一个码是好的，另一个带着 0xFF 高字节（甚至整个坏掉）。
+    # 实测日期对象：主码解出 232（正确），备份码解出 65512(0xFF68)（坏的）。
+    # 只要有一个码能和明文自洽，就认明文。
+    if decrypt((code ^ nkey) & MASK32, k, (pattern >> 16) & 0xFFFF) == (v & MASK32):
+        return v
+    if decrypt(backup & MASK32, k, pattern & 0xFFFF) == (v & MASK32):
+        return v
+    return None
 
 
 def days_to_date(days: int) -> str:

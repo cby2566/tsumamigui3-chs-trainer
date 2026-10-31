@@ -66,8 +66,10 @@ class App(tk.Tk):
         self.date_panel = ValuePanel(nb, self, "date", "日期", DATE_MAX,
                                      "，填从 1 月 1 日算起的天数，改动前先存档",
                                      show_fill=False, describe=days_to_date)
-        self.fert_panel = ValuePanel(nb, self, "fertilize", "受精值·海夕里①",
+        self.fert_panel = ValuePanel(nb, self, "fertilize_kaede_1", "受精值·海夕里①",
                                      FERTILIZE_MAX_KAEDE, "，主人公，上限 150")
+        self.fert1b_panel = ValuePanel(nb, self, "fertilize_kaede_2", "受精值·海夕里②",
+                                       FERTILIZE_MAX_KAEDE, "，上限 150")
         self.fert2_panel = ValuePanel(nb, self, "fertilize_sayoko_1", "受精值·砂夜子①",
                                       FERTILIZE_MAX_SAYOKO, "，上限 250")
         self.fert3_panel = ValuePanel(nb, self, "fertilize_sayoko_2", "受精值·砂夜子②",
@@ -82,7 +84,8 @@ class App(tk.Tk):
         nb.add(self.money_panel, text="  金币  ")
         nb.add(self.energy_panel, text="  精力  ")
         nb.add(self.date_panel, text="  日期  ")
-        nb.add(self.fert_panel, text="  受精·海夕里  ")
+        nb.add(self.fert_panel, text="  受精·海夕里①  ")
+        nb.add(self.fert1b_panel, text="  受精·海夕里②  ")
         nb.add(self.fert2_panel, text="  受精·砂夜子①  ")
         nb.add(self.fert3_panel, text="  受精·砂夜子②  ")
         nb.add(self.fert4_panel, text="  受精·砂夜子③  ")
@@ -157,8 +160,8 @@ class App(tk.Tk):
                 self.log(line)
             # 自动定位命中时，直接把地址铺到两个页签上，省掉手填数字那一步
             for panel in (self.money_panel, self.energy_panel, self.date_panel,
-                          self.fert_panel, self.fert2_panel, self.fert3_panel,
-                          self.fert4_panel):
+                          self.fert_panel, self.fert1b_panel, self.fert2_panel,
+                          self.fert3_panel, self.fert4_panel):
                 panel.adopt_auto()
 
         self.run_bg(job, done, busy="正在附加…")
@@ -167,8 +170,8 @@ class App(tk.Tk):
 
     def _tick(self) -> None:
         for panel in (self.money_panel, self.energy_panel, self.date_panel,
-                      self.fert_panel, self.fert2_panel, self.fert3_panel,
-                      self.fert4_panel, self.shield_panel):
+                      self.fert_panel, self.fert1b_panel, self.fert2_panel,
+                      self.fert3_panel, self.fert4_panel, self.shield_panel):
             try:
                 panel.tick()
             except Exception:                            # noqa: BLE001
