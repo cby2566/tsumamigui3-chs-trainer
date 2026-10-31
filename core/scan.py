@@ -66,12 +66,18 @@ class Scanner:
 
         块之间留 OVERLAP_MAX-1 字节重叠，保证跨越块边界的值也能被找到；
         推进量按**实际读到的字节数**算，部分读失败时不会跳过数据。
+
+        整块读不出来（got == 0）就直接放弃这个区域：它多半已经被游戏释放了。
+        早先这里按 4 字节继续推进，撞上几十 MB 的失效区域会变成上千万次
+        ReadProcessMemory，界面就永远停在「正在扫描…」上。
         """
         off = 0
         while off < region.size:
             n = min(CHUNK, region.size - off)
             buf = self.proc.read(region.base + off, n)
             got = len(buf)
+            if got == 0:
+                return                      # 区域已不可读，别在原地空转
             if got >= item:
                 yield region.base + off, buf
                 advance = got - (OVERLAP_MAX - 1)

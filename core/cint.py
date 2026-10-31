@@ -72,10 +72,10 @@ ENERGY_MAX = 20             # C_GAME_PARAMETER@SetEnergy 里的 Clamp(0, 0x14)
 MONEY_MEMBER_OFFSET = 112   # m_nMoney 在 C_GAME_PARAMETER 内的偏移
 ENERGY_MEMBER_OFFSET = 96   # m_nEnergy，用于邻接确认
 
-# 实测：m_nEnergy 的地址 + 0x30 == m_nMoney 的地址（同一个 C_GAME_PARAMETER
-# 实例内的相对位置固定）。早先按 "相邻 16 字节" 推算过，那个偏移是错的，
-# 所以一度误判成「精力不能由金币地址推算」。
-ENERGY_TO_MONEY = 0x30
+# 注意：金币和精力是**各自独立分配的 C_INT 堆对象**，不是结构体内相邻的成员，
+# 所以「精力地址 + 固定偏移 = 金币地址」这种推算**不成立**。
+# 实测三次启动的差值分别是 +0x30、+0x30、-0x150 —— 前两次一致纯属堆分配巧合。
+# 要稳定定位请走变量号（见 vmslot.py），不要用偏移猜。
 
 PATTERN_HALF_MAX = 8        # SetEncryptionPattern 里 rand 的上界
 PATTERN_XOR = 7             # 令 pattern % 8 == 7，分派到 nIndex 8 = Encrytion01(纯 XOR)
@@ -286,6 +286,8 @@ def scan(proc: Process, money: int, scanner: Scanner | None = None,
             n = min(CHUNK, r.size - off)
             buf = proc.read(r.base + off, n)
             got = len(buf)
+            if got == 0:
+                break                   # 区域已被释放，跳过；不能按 4 字节原地推
             usable = (got // 4) * 4
             if usable >= 16:
                 a = np.frombuffer(buf[:usable], dtype="<u4")
