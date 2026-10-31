@@ -84,6 +84,11 @@ def scan_slots(proc, want: set[int] | None = None) -> dict[int, Slot]:
         while off < r.size:
             buf = proc.read(r.base + off, min(CHUNK, r.size - off))
             got = len(buf)
+            if got == 0:
+                # 整块都读不出来，说明这个区域的快照已经过期（读档会释放/重建堆）。
+                # 按 4 字节继续推进就是几千万次 ReadProcessMemory ——
+                # 表现就是「点了重新自动定位之后整个工具像死了一样」。
+                break
             usable = (got // 4) * 4
             if usable >= 16:
                 a = np.frombuffer(buf[:usable], dtype="<u4")

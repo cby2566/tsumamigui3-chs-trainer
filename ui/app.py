@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
@@ -18,6 +19,7 @@ from value_panel import ValuePanel
 TICK_MS = 200
 RELOCATE_RETRY_MS = 1500     # 重新自动定位未命中时的重试间隔
 RELOCATE_RETRY_MAX = 10      # 最多重试 10 次（约 15 秒），够读完一次档
+RELOCATE_TIMEOUT = 20.0      # 单次扫描超过这个时间就判定卡住，放行界面
 
 
 class GroupPanel(ttk.Frame):
@@ -47,6 +49,8 @@ class App(tk.Tk):
         self._build()
         self._queue: queue.Queue = queue.Queue()
         self._relocating = False         # 重试链正在跑时，别让按钮叠出第二条链
+        self._reloc_started = 0.0        # 本次扫描的起始时间（看门狗用）
+        self._reloc_token = 0            # 看门狗放弃后，晚到的结果不再处理
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(TICK_MS, self._tick)
         self.after(50, self._drain_queue)
@@ -238,6 +242,11 @@ class App(tk.Tk):
                 self.log("正在自动定位，先别重复点")
                 return
             self._relocating = True
+            self._reloc_token += 1
+            self.after(1000, self._watch_relocate)
+
+        self._reloc_started = time.time()
+        token = self._reloc_token
 
         def job():
             try:
@@ -248,6 +257,9 @@ class App(tk.Tk):
                 return AutoResult({}, [], f"自动定位失败：{exc}")
 
         def done(result) -> None:
+            if token != self._reloc_token:
+                # 已经被看门狗判定放弃，这份迟到结果不要再改界面、也别再起重试链
+                return
             for line in result.message.splitlines():
                 if line:
                     self.log(line)
@@ -271,6 +283,23 @@ class App(tk.Tk):
                 self.log("重新自动定位仍未命中：确认游戏已经读完档，再点一次按钮")
 
         self.run_bg(job, done, busy="正在自动定位…")
+
+    def _watch_relocate(self) -> None:
+        """扫描卡住时把界面放行。
+
+        Python 线程没法从外面杀掉，但至少不能让按钮和状态栏永久锁死；
+        放弃时把 token 加一，那份迟到的结果就不会再来改界面。
+        """
+        if not self._relocating:
+            return
+        if time.time() - self._reloc_started < RELOCATE_TIMEOUT:
+            self.after(1000, self._watch_relocate)
+            return
+        self._relocating = False
+        self._reloc_token += 1
+        self.status.configure(text="就绪")
+        self.log(f"自动定位超过 {RELOCATE_TIMEOUT:.0f} 秒没有结果，已停止等待"
+                 f"（后台线程可能卡在失效内存上）。可以再点一次，或手动定位")
 
     # ---------- 定时 ----------
 
