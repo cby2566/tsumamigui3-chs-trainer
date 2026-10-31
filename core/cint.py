@@ -70,7 +70,10 @@ KEY_B = 0xAAAAAAAA          # 反汇编里是 -0x55555556
 MONEY_MAX = 999_999         # C_GAME_PARAMETER@SetMoney 里的 Clamp(0, 0xF423F)
 ENERGY_MAX = 20             # C_GAME_PARAMETER@SetEnergy 里的 Clamp(0, 0x14)
 DATE_MAX = 9999             # m_nDate 存的是「经过天数」，SSG 给的显示上限也是 9999
-FERTILIZE_MAX = 999         # 受精值上限，来自 SSG 的 :calc,0,999
+# 受精值上限按女主不同，取自游戏里显示的最大值（SSG 里统一写 999，偏大）
+FERTILIZE_MAX = 999         # 兜底上限
+FERTILIZE_MAX_KAEDE = 150   # 海夕里
+FERTILIZE_MAX_SAYOKO = 250  # 砂夜子
 MONEY_MEMBER_OFFSET = 112   # m_nMoney 在 C_GAME_PARAMETER 内的偏移
 ENERGY_MEMBER_OFFSET = 96   # m_nEnergy，用于邻接确认
 

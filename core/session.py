@@ -9,7 +9,8 @@ import time
 from datetime import datetime
 
 from cint import (BoolCandidate, Candidate, DATE_MAX, ENERGY_MAX,
-                  FERTILIZE_MAX, MONEY_MAX, read_at, read_bool,
+                  FERTILIZE_MAX_KAEDE, FERTILIZE_MAX_SAYOKO, MONEY_MAX,
+                  read_at, read_bool,
                   scan as scan_cint, scan_bool, write_bool, write_money)
 from scan import Result, Scanner
 from vmslot import DEFAULT_VAR_IDS, scan_slots
@@ -61,10 +62,11 @@ class Session:
         "money": MONEY_MAX,
         "energy": ENERGY_MAX,
         "date": DATE_MAX,
-        "fertilize": FERTILIZE_MAX,
-        "fertilize_sayoko_1": FERTILIZE_MAX,
-        "fertilize_sayoko_2": FERTILIZE_MAX,
-        "fertilize_sayoko_3": FERTILIZE_MAX,
+        # 受精值的上限按女主配置：海夕里 150、砂夜子 250（游戏里能看到的最大值）
+        "fertilize": FERTILIZE_MAX_KAEDE,
+        "fertilize_sayoko_1": FERTILIZE_MAX_SAYOKO,
+        "fertilize_sayoko_2": FERTILIZE_MAX_SAYOKO,
+        "fertilize_sayoko_3": FERTILIZE_MAX_SAYOKO,
         "shield_kaede": 1,
         "shield_sayoko": 1,
     }

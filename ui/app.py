@@ -8,7 +8,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from cint import DATE_MAX, ENERGY_MAX, FERTILIZE_MAX, MONEY_MAX, days_to_date
+from cint import (DATE_MAX, ENERGY_MAX, FERTILIZE_MAX_KAEDE,
+                  FERTILIZE_MAX_SAYOKO, MONEY_MAX, days_to_date)
 from session import Session
 from shield_panel import ShieldPanel
 from value_panel import ValuePanel
@@ -65,14 +66,14 @@ class App(tk.Tk):
         self.date_panel = ValuePanel(nb, self, "date", "日期", DATE_MAX,
                                      "，填从 1 月 1 日算起的天数，改动前先存档",
                                      show_fill=False, describe=days_to_date)
-        self.fert_panel = ValuePanel(nb, self, "fertilize", "受精值·海夕里",
-                                     FERTILIZE_MAX, "，主人公")
+        self.fert_panel = ValuePanel(nb, self, "fertilize", "受精值·海夕里①",
+                                     FERTILIZE_MAX_KAEDE, "，主人公，上限 150")
         self.fert2_panel = ValuePanel(nb, self, "fertilize_sayoko_1", "受精值·砂夜子①",
-                                      FERTILIZE_MAX, "，砂夜子")
+                                      FERTILIZE_MAX_SAYOKO, "，上限 250")
         self.fert3_panel = ValuePanel(nb, self, "fertilize_sayoko_2", "受精值·砂夜子②",
-                                      FERTILIZE_MAX, "，砂夜子")
+                                      FERTILIZE_MAX_SAYOKO, "，上限 250")
         self.fert4_panel = ValuePanel(nb, self, "fertilize_sayoko_3", "受精值·砂夜子③",
-                                      FERTILIZE_MAX, "，砂夜子")
+                                      FERTILIZE_MAX_SAYOKO, "，上限 250")
         self.shield_panel = ShieldPanel(nb, self)
         # 「数值搜索」页签默认不挂：它扫的是裸内存值，而本作的值全是 C_INT，
         # 直接改 m_nValue 会被 Get() 的自愈逻辑改回去，改了等于没改。
