@@ -17,8 +17,9 @@ from winmem import Process, WinMemError, find_process
 
 KIND_LABELS = {"money": "金币", "energy": "精力", "date": "日期",
                "fertilize": "受精值·海夕里",
-               "fertilize_sayoko_a": "受精值·砂夜子①",
-               "fertilize_sayoko_b": "受精值·砂夜子②",
+               "fertilize_sayoko_1": "受精值·砂夜子①",
+               "fertilize_sayoko_2": "受精值·砂夜子②",
+               "fertilize_sayoko_3": "受精值·砂夜子③",
                "shield_kaede": "海夕里愛盾", "shield_sayoko": "砂夜子愛盾"}
 
 DEFAULT_CONFIG = {
@@ -61,8 +62,9 @@ class Session:
         "energy": ENERGY_MAX,
         "date": DATE_MAX,
         "fertilize": FERTILIZE_MAX,
-        "fertilize_sayoko_a": FERTILIZE_MAX,
-        "fertilize_sayoko_b": FERTILIZE_MAX,
+        "fertilize_sayoko_1": FERTILIZE_MAX,
+        "fertilize_sayoko_2": FERTILIZE_MAX,
+        "fertilize_sayoko_3": FERTILIZE_MAX,
         "shield_kaede": 1,
         "shield_sayoko": 1,
     }

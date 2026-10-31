@@ -67,9 +67,11 @@ class App(tk.Tk):
                                      show_fill=False, describe=days_to_date)
         self.fert_panel = ValuePanel(nb, self, "fertilize", "受精值·海夕里",
                                      FERTILIZE_MAX, "，主人公")
-        self.fert2_panel = ValuePanel(nb, self, "fertilize_sayoko_a", "受精值·砂夜子①",
+        self.fert2_panel = ValuePanel(nb, self, "fertilize_sayoko_1", "受精值·砂夜子①",
                                       FERTILIZE_MAX, "，砂夜子")
-        self.fert3_panel = ValuePanel(nb, self, "fertilize_sayoko_b", "受精值·砂夜子②",
+        self.fert3_panel = ValuePanel(nb, self, "fertilize_sayoko_2", "受精值·砂夜子②",
+                                      FERTILIZE_MAX, "，砂夜子")
+        self.fert4_panel = ValuePanel(nb, self, "fertilize_sayoko_3", "受精值·砂夜子③",
                                       FERTILIZE_MAX, "，砂夜子")
         self.shield_panel = ShieldPanel(nb, self)
         # 「数值搜索」页签默认不挂：它扫的是裸内存值，而本作的值全是 C_INT，
@@ -82,6 +84,7 @@ class App(tk.Tk):
         nb.add(self.fert_panel, text="  受精·海夕里  ")
         nb.add(self.fert2_panel, text="  受精·砂夜子①  ")
         nb.add(self.fert3_panel, text="  受精·砂夜子②  ")
+        nb.add(self.fert4_panel, text="  受精·砂夜子③  ")
         nb.add(self.shield_panel, text="  愛盾  ")
 
         log_frame = ttk.LabelFrame(self, text=" 日志 ", padding=(8, 4))
@@ -153,7 +156,8 @@ class App(tk.Tk):
                 self.log(line)
             # 自动定位命中时，直接把地址铺到两个页签上，省掉手填数字那一步
             for panel in (self.money_panel, self.energy_panel, self.date_panel,
-                          self.fert_panel, self.fert2_panel, self.fert3_panel):
+                          self.fert_panel, self.fert2_panel, self.fert3_panel,
+                          self.fert4_panel):
                 panel.adopt_auto()
 
         self.run_bg(job, done, busy="正在附加…")
@@ -163,7 +167,7 @@ class App(tk.Tk):
     def _tick(self) -> None:
         for panel in (self.money_panel, self.energy_panel, self.date_panel,
                       self.fert_panel, self.fert2_panel, self.fert3_panel,
-                      self.shield_panel):
+                      self.fert4_panel, self.shield_panel):
             try:
                 panel.tick()
             except Exception:                            # noqa: BLE001
