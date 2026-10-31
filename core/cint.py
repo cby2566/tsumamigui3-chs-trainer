@@ -61,7 +61,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from scan import CHUNK, Scanner
-from winmem import Process
+from winmem import PAGE_EXECUTE_READWRITE, PAGE_READWRITE, Process
 
 MASK32 = 0xFFFF_FFFF
 KEY_A = 0xB47C275A
@@ -322,6 +322,9 @@ def scan_all(proc: Process, scanner: Scanner | None = None) -> list[Candidate]:
     found: dict[int, Candidate] = {}
 
     for r in sc.regions:
+        # 只碰普通可写数据页；排除可执行页，避免把代码里的常量当成对象写坏。
+        if not (r.protect & PAGE_READWRITE) or (r.protect & PAGE_EXECUTE_READWRITE):
+            continue
         off = 0
         while off < r.size:
             buf = proc.read(r.base + off, min(CHUNK, r.size - off))
