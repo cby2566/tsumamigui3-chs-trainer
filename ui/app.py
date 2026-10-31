@@ -13,6 +13,7 @@ from cint import (DATE_MAX, ENERGY_MAX, FERTILIZE_MAX_KAEDE,
                   FERTILIZE_MAX_SAYOKO, FERTILIZE_MAX_AOI, FERTILIZE_MAX_SUMIRE,
                   MONEY_MAX, days_to_date)
 from session import AutoResult, Session
+from save_panel import SavePanel
 from shield_panel import ShieldPanel
 from value_panel import ValuePanel
 
@@ -126,6 +127,7 @@ class App(tk.Tk):
                              (self.fert6_panel, "菫①")):
             self.fert_group.add(panel, title)
         self.shield_panel = ShieldPanel(nb, self)
+        self.save_panel = SavePanel(nb, self)
         # 「数值搜索」页签默认不挂：它扫的是裸内存值，而本作的值全是 C_INT，
         # 直接改 m_nValue 会被 Get() 的自愈逻辑改回去，改了等于没改。
         # scan_panel.py 仍然保留，需要时把下面这行加回来即可：
@@ -135,6 +137,7 @@ class App(tk.Tk):
         nb.add(self.date_panel, text="  日期  ")
         nb.add(self.fert_group, text="  受精值  ")
         nb.add(self.shield_panel, text="  愛盾  ")
+        nb.add(self.save_panel, text="  存档  ")
 
         log_frame = ttk.LabelFrame(self, text=" 日志 ", padding=(8, 4))
         log_frame.pack(fill="both", padx=12, pady=(0, 12))
