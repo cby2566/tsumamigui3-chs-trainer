@@ -15,3 +15,6 @@ SaveData_bak_*/
 
 # 排查用的内存快照：含游戏明文数据，体积也大，只在本地留着
 report/shield_*.json
+
+# 本地笔记
+docs/RE_NOTES.md
