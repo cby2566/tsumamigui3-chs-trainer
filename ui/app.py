@@ -9,7 +9,6 @@ from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from cint import ENERGY_MAX, MONEY_MAX
-from scan_panel import ScanPanel
 from session import Session
 from shield_panel import ShieldPanel
 from value_panel import ValuePanel
@@ -64,10 +63,13 @@ class App(tk.Tk):
         self.energy_panel = ValuePanel(nb, self, "energy", "精力", ENERGY_MAX,
                                        "，由 SetEnergy 写死")
         self.shield_panel = ShieldPanel(nb, self)
+        # 「数值搜索」页签默认不挂：它扫的是裸内存值，而本作的值全是 C_INT，
+        # 直接改 m_nValue 会被 Get() 的自愈逻辑改回去，改了等于没改。
+        # scan_panel.py 仍然保留，需要时把下面这行加回来即可：
+        #   nb.add(ScanPanel(nb, self), text="  数值搜索  ")
         nb.add(self.money_panel, text="  金币  ")
         nb.add(self.energy_panel, text="  精力  ")
         nb.add(self.shield_panel, text="  愛盾  ")
-        nb.add(ScanPanel(nb, self), text="  数值搜索  ")
 
         log_frame = ttk.LabelFrame(self, text=" 日志 ", padding=(8, 4))
         log_frame.pack(fill="both", padx=12, pady=(0, 12))
