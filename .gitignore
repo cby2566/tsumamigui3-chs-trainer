@@ -9,3 +9,6 @@ __pycache__/
 # 运行期产物
 report/*.log
 SaveData_bak_*/
+
+# 第三方修改器脚本，含游戏数据，不入库
+*.ssg
