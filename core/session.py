@@ -8,11 +8,15 @@ import shutil
 import time
 from datetime import datetime
 
-from cint import (BoolCandidate, Candidate, ENERGY_MAX, ENERGY_TO_MONEY,
-                  MONEY_MAX, read_at, read_bool, scan as scan_cint, scan_bool,
-                  write_bool, write_money)
+from cint import (BoolCandidate, Candidate, ENERGY_MAX, MONEY_MAX, read_at,
+                  read_bool, scan as scan_cint, scan_bool, write_bool,
+                  write_money)
 from scan import Result, Scanner
+from vmslot import DEFAULT_VAR_IDS, scan_slots
 from winmem import Process, WinMemError, find_process
+
+KIND_LABELS = {"money": "金币", "energy": "精力",
+               "shield_kaede": "海夕里愛盾", "shield_sayoko": "砂夜子愛盾"}
 
 DEFAULT_CONFIG = {
     # 游戏身份全部外置到 config.json（已 gitignore），代码里不留任何本地路径
@@ -65,6 +69,12 @@ class Session:
         self.addresses: dict[str, int | None] = {k: None for k in self.TARGETS}
         self.last_result: Result | None = None
         self._backed_up = False
+        # 变量号是编译产物，跨重启不变；不同版本可能不同，允许 config 覆盖
+        self.var_ids: dict[str, int] = dict(DEFAULT_VAR_IDS)
+        self.var_ids.update(self.cfg.get("var_ids") or {})
+        # 哪些数值的地址是「按变量号」拿到的。这类地址即使数据解不出来
+        # 也是可信的（槽指向的就是它），不该当成「地址失效」去重新定位。
+        self.from_var_id: set[str] = set()
 
     # ---------- 附加 ----------
 
@@ -86,11 +96,45 @@ class Session:
         self.candidates = []
         self.bool_candidates = []
         self.addresses = {k: None for k in self.TARGETS}
+        self.from_var_id.clear()
         self.last_result = None
         self._backed_up = False
 
         size = self.proc.total_writable()
-        return f"已附加 {exe} (pid={pids[0]})，可写私有内存 {size / 1048576:.1f} MB"
+        msg = f"已附加 {exe} (pid={pids[0]})，可写私有内存 {size / 1048576:.1f} MB"
+        auto = self.autolocate()
+        if auto:
+            msg += "\n" + auto
+        return msg
+
+    def autolocate(self) -> str:
+        """附加后按变量号自动绑定金币 / 精力，不需要人从界面读数字。
+
+        走的是 VM 变量槽表（见 vmslot.py）：变量号是编译期定死的，
+        重启游戏后堆地址会全变，但编号不变，所以这条路最稳。
+        """
+        if not self.attached or self.proc is None:
+            return ""
+        want = {vid: kind for kind, vid in self.var_ids.items()
+                if kind in self.TARGETS}
+        if not want:
+            return ""
+        try:
+            slots = scan_slots(self.proc, set(want))
+        except WinMemError:
+            return "自动定位失败，需要手动定位"
+        got = []
+        for vid, kind in want.items():
+            s = slots.get(vid)
+            if s is None:
+                continue
+            self.addresses[kind] = s.value_addr
+            self.from_var_id.add(kind)
+            shown = "数据不自洽" if s.value is None else s.value
+            got.append(f"{KIND_LABELS.get(kind, kind)} {shown} (0x{s.value_addr:08X})")
+        if not got:
+            return "自动定位没命中（游戏可能还没进存档），需要手动定位"
+        return "自动定位：" + "、".join(got)
 
     def detach(self) -> None:
         if self.proc:
@@ -109,15 +153,26 @@ class Session:
     # ---------- 存档备份 ----------
 
     def backup_saves(self) -> str | None:
-        """第一次定位前把存档目录整体复制一份，只做一次。"""
+        """第一次定位前把存档目录整体复制一份；同一天只做一次。
+
+        早先的写法是每次 attach 重置标志，于是每次启动工具都会复制一份，
+        SaveData_bak_* 越堆越多，而且复制大的存档目录还会让第一次定位明显变慢。
+        """
         if self._backed_up or not self.cfg.get("backup_saves"):
             return None
         src = self.cfg.get("save_dir")
         self._backed_up = True
         if not src or not os.path.isdir(src):
             return None
+        parent = os.path.dirname(src.rstrip("\\/"))
+        today = datetime.now().strftime("%Y%m%d")
+        try:
+            if any(n.startswith(f"SaveData_bak_{today}") for n in os.listdir(parent)):
+                return None
+        except OSError:
+            pass
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        dst = os.path.join(os.path.dirname(src.rstrip("\\/")), f"SaveData_bak_{stamp}")
+        dst = os.path.join(parent, f"SaveData_bak_{stamp}")
         try:
             shutil.copytree(src, dst)
             return dst
@@ -126,52 +181,25 @@ class Session:
 
     # ---------- 受保护的数值（金币 / 精力） ----------
 
-    # 同一个 C_GAME_PARAMETER 实例里，金币和精力的相对位置固定：
-    #   energy_addr + 0x30 == money_addr
-    # 于是只要定位到其中一个，另一个可以直接算出来、读一下就能确认，
-    # 既不用全量扫描，也不会误绑到堆上的副本。
-    SIBLING = {
-        "energy": ("money", -ENERGY_TO_MONEY),
-        "money": ("energy", ENERGY_TO_MONEY),
-    }
-
-    def sibling_address(self, kind: str) -> int | None:
-        """按同族偏移推算地址；邻居还没定位时返回 None。"""
-        pair = self.SIBLING.get(kind)
-        if pair is None:
-            return None
-        other, delta = pair
-        base = self.addresses.get(other)
-        return None if base is None else base + delta
-
-    def sibling_value(self, kind: str) -> int | None:
-        """读同族偏移处的真实值。一方定位后，另一方的值也就能直接读到。"""
-        if not self.attached:
-            return None
-        addr = self.sibling_address(kind)
-        if addr is None:
-            return None
-        cur = read_at(self.proc, addr)
-        return cur.decoded if cur is not None else None
-
     def find(self, kind: str, value: int) -> list[Candidate]:
         proc, sc = self.require()
         self.backup_saves()
 
-        # 先试同族偏移：值对得上就直接用它，不再全量扫描。
-        sib = self.sibling_address(kind)
-        if sib is not None:
-            cand = read_at(proc, sib)
-            if cand is not None and cand.decoded == value:
-                self.candidates = [cand]
-                return self.candidates
+        # 已经绑定的地址如果还解得这个值，直接用它，不用再全量扫。
+        # （自动定位之后基本都走这条分支，只有地址真失效了才需要扫描。）
+        cur = self.current(kind)
+        if cur is not None and cur.decoded == value:
+            self.candidates = [cur]
+            return self.candidates
 
-        # 精力这类小数值容易撞车，用金币的地址做「同族」参考来排序
+        # 精力这类小数值容易撞车，用另一方的地址做参考来排序
         near = None
         for other in ("money", "energy"):
             if other != kind and self.addresses.get(other) is not None:
                 near = self.addresses[other]
                 break
+        # 走了全量扫描说明不是变量号给的地址，别再用「数据不自洽」兜着
+        self.from_var_id.discard(kind)
         self.candidates = scan_cint(proc, value, sc, near=near)
         return self.candidates
 
@@ -222,6 +250,7 @@ class Session:
 
     def unbind(self, kind: str) -> None:
         self.addresses[kind] = None
+        self.from_var_id.discard(kind)
 
     def current(self, kind: str) -> Candidate | None:
         addr = self.addresses.get(kind)
@@ -244,7 +273,8 @@ class Session:
         new = self.current(kind)
         if new is None or new.decoded != value:
             raise WinMemError("写入后解码结果不一致")
-        return f"{old.decoded if old else '?'} → {value}  (地址 0x{addr:08X})"
+        old_text = old.decoded if (old is not None and old.decoded is not None) else "?"
+        return f"{old_text} → {value}  (地址 0x{addr:08X})"
 
     # ---------- 通用搜索 ----------
 

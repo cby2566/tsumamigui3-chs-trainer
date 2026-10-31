@@ -12,6 +12,8 @@ from tkinter import messagebox, ttk
 
 from winmem import WinMemError
 
+RECOVER_TIMEOUT = 30.0       # 后台重定位超过这个秒数就算卡住，强制放行重试
+
 
 class ValuePanel(ttk.Frame):
     def __init__(self, master, app, kind: str, label: str, max_value: int, hint: str = ""):
@@ -166,16 +168,33 @@ class ValuePanel(ttk.Frame):
                 self.app.log(f"{self.label}选中 0x{addr:08X}，当前值 {cur.decoded}")
 
     def _bound_value(self) -> int | None:
-        """工具现在能确认的「内存真实值」。
+        """已绑定地址当前解码出的值；没绑定、或解不出时返回 None。"""
+        if self.session.address(self.kind) is None:
+            return None
+        cur = self.session.current(self.kind)
+        return cur.decoded if cur is not None else None
 
-        优先读已绑定地址；没绑定或解不出时，退一步按同族偏移读邻居
-        （金币和精力是同一个 C_GAME_PARAMETER 里的邻居，一方在就能拿到另一方）。
+    def adopt_auto(self) -> None:
+        """附加时如果已经自动定位到地址，直接铺到界面上，不用人再点「定位」。
+
+        数据不自洽（解不出来）时照样把地址铺出来 —— 地址本身是对的，
+        点一次「设为」会写回自洽的 16 字节，等于顺手把它修好。
         """
-        if self.session.address(self.kind) is not None:
-            cur = self.session.current(self.kind)
-            if cur is not None and cur.decoded is not None:
-                return cur.decoded
-        return self.session.sibling_value(self.kind)
+        addr = self.session.address(self.kind)
+        if addr is None:
+            return
+        cur = self.session.current(self.kind)
+        if cur is None:
+            return
+        self._render([cur])
+        self._select_addr(addr)
+        self._fail_streak = 0
+        if cur.decoded is None:
+            self.current_entry.set("")
+            self.live.configure(text="当前：数据不自洽（点「设为」写一次即可修复）")
+        else:
+            self.current_entry.set(str(cur.decoded))
+            self.live.configure(text=f"当前：{cur.decoded}")
 
     # ---------- 修改 ----------
 
@@ -246,6 +265,12 @@ class ValuePanel(ttk.Frame):
             self._fail_streak += 1
             if self._fail_streak < 3:
                 return
+            # 地址是按变量号拿到的吗？是的话它一定没错 —— 解不出来只能说明
+            # C_INT 的数据坏了（主校验码和值对不上），点「设为」写一次就能修好。
+            # 这种情况不能去「重新定位」，否则会陷进反复扫描。
+            if self.kind in self.session.from_var_id:
+                self.live.configure(text="当前：数据不自洽（点「设为」写一次即可修复）")
+                return
             self.live.configure(text="当前：地址已失效")
             self._try_recover()
             return
@@ -263,7 +288,14 @@ class ValuePanel(ttk.Frame):
     def _try_recover(self) -> None:
         """地址失效时，用最后一次已知的值重新扫一遍（限流 5 秒一次）。"""
         now = time.time()
-        if self._recovering or self._last_good is None or now - self._recover_at < 5:
+        if self._recovering:
+            # 后台扫描万一卡住（撞上刚被游戏释放的内存之类），
+            # 别让面板永久锁在「正在重新定位」上 —— 超时就强制放行重试。
+            if now - self._recover_at < RECOVER_TIMEOUT:
+                return
+            self._recovering = False
+            self.app.log(f"{self.label}上次重新定位超时，重试")
+        if self._last_good is None or now - self._recover_at < 5:
             return
         self._recovering = True
         self._recover_at = now
@@ -271,10 +303,19 @@ class ValuePanel(ttk.Frame):
         old_addr = self.session.address(self.kind)
 
         def job():
-            return self.session.find(self.kind, value)
+            try:
+                return self.session.find(self.kind, value)
+            except Exception as exc:                      # noqa: BLE001
+                # 异常必须当结果带回去：run_bg 的错误分支不会调用 done()，
+                # _recovering 就会一直是 True，面板永远停在「正在重新定位」。
+                return exc
 
-        def done(cands) -> None:
+        def done(result) -> None:
             self._recovering = False
+            if isinstance(result, Exception):
+                self.app.log(f"{self.label}重新定位失败：{result}")
+                return
+            cands = result
             if not cands:
                 self.app.log(f"{self.label}地址失效，且按上次的值 {value} 已找不到；"
                              f"请在游戏里看一眼当前{self.label}再重新定位")

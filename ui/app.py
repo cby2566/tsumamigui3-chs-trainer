@@ -136,7 +136,11 @@ class App(tk.Tk):
 
         def done(msg):
             self.btn_attach.configure(text="断开")
-            self.log(msg)
+            for line in str(msg).splitlines():
+                self.log(line)
+            # 自动定位命中时，直接把地址铺到两个页签上，省掉手填数字那一步
+            for panel in (self.money_panel, self.energy_panel):
+                panel.adopt_auto()
 
         self.run_bg(job, done, busy="正在附加…")
 
