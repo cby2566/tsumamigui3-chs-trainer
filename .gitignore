@@ -1,6 +1,9 @@
 # 本地配置：含游戏目录与存档路径，不入库
 config.json
 
+# 助手的本地工作区（日志、交接文件等），只留在本机
+.workbuddy/
+
 # Python
 __pycache__/
 *.pyc
