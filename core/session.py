@@ -8,9 +8,9 @@ import shutil
 import time
 from datetime import datetime
 
-from cint import (BoolCandidate, Candidate, ENERGY_MAX, MONEY_MAX, read_at,
-                  read_bool, scan as scan_cint, scan_bool, write_bool,
-                  write_money)
+from cint import (BoolCandidate, Candidate, ENERGY_MAX, ENERGY_TO_MONEY,
+                  MONEY_MAX, read_at, read_bool, scan as scan_cint, scan_bool,
+                  write_bool, write_money)
 from scan import Result, Scanner
 from winmem import Process, WinMemError, find_process
 
@@ -126,9 +126,46 @@ class Session:
 
     # ---------- 受保护的数值（金币 / 精力） ----------
 
+    # 同一个 C_GAME_PARAMETER 实例里，金币和精力的相对位置固定：
+    #   energy_addr + 0x30 == money_addr
+    # 于是只要定位到其中一个，另一个可以直接算出来、读一下就能确认，
+    # 既不用全量扫描，也不会误绑到堆上的副本。
+    SIBLING = {
+        "energy": ("money", -ENERGY_TO_MONEY),
+        "money": ("energy", ENERGY_TO_MONEY),
+    }
+
+    def sibling_address(self, kind: str) -> int | None:
+        """按同族偏移推算地址；邻居还没定位时返回 None。"""
+        pair = self.SIBLING.get(kind)
+        if pair is None:
+            return None
+        other, delta = pair
+        base = self.addresses.get(other)
+        return None if base is None else base + delta
+
+    def sibling_value(self, kind: str) -> int | None:
+        """读同族偏移处的真实值。一方定位后，另一方的值也就能直接读到。"""
+        if not self.attached:
+            return None
+        addr = self.sibling_address(kind)
+        if addr is None:
+            return None
+        cur = read_at(self.proc, addr)
+        return cur.decoded if cur is not None else None
+
     def find(self, kind: str, value: int) -> list[Candidate]:
         proc, sc = self.require()
         self.backup_saves()
+
+        # 先试同族偏移：值对得上就直接用它，不再全量扫描。
+        sib = self.sibling_address(kind)
+        if sib is not None:
+            cand = read_at(proc, sib)
+            if cand is not None and cand.decoded == value:
+                self.candidates = [cand]
+                return self.candidates
+
         # 精力这类小数值容易撞车，用金币的地址做「同族」参考来排序
         near = None
         for other in ("money", "energy"):

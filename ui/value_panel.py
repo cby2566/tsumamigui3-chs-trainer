@@ -25,6 +25,10 @@ class ValuePanel(ttk.Frame):
         self._last_good: int | None = None
         self._recovering = False
         self._recover_at = 0.0
+        self._fail_streak = 0            # 连续解码失败次数（去抖用）
+        self._by_addr: dict[int, str] = {}
+        self._suppress = False           # 程序自动换行时，别重复刷「选中」日志
+        self._warned_stale = False       # 「界面可能没刷新」只提一次
         self._build(hint)
 
     # ---------- 界面 ----------
@@ -86,24 +90,64 @@ class ValuePanel(ttk.Frame):
             messagebox.showwarning("数值不对", f"{self.label}要填整数")
             return
 
+        requested = value
+        # 改过内存之后，游戏界面未必立刻重绘：界面还停在旧数字，内存里已经是新值。
+        # 这时候照界面填的数字一定搜不到，人就会以为「地址失效了」。
+        # 所以先按用户填的搜，搜不到再用已绑定地址当前解出的真实值兜底。
+        actual = self._bound_value()
+        fallback = actual if actual is not None and actual != requested else None
+
         def job():
-            return self.session.find(self.kind, value)
+            cands = self.session.find(self.kind, requested)
+            if cands or fallback is None:
+                return cands, requested, requested
+            return self.session.find(self.kind, fallback), requested, fallback
 
-        self.app.run_bg(job, self._show_candidates, busy=f"正在扫描{self.label}…")
+        self.app.run_bg(job, lambda r: self._show_candidates(*r),
+                        busy=f"正在扫描{self.label}…")
 
-    def _show_candidates(self, cands) -> None:
+    def _render(self, cands) -> None:
+        """重建候选列表，并记住地址 → 行号的映射（用来按地址回选）。"""
         self.tree.delete(*self.tree.get_children())
+        self._by_addr = {}
         for c in cands:
-            self.tree.insert("", "end", values=(
+            iid = self.tree.insert("", "end", values=(
                 f"0x{c.address:08X}", c.value, f"{c.cord}/{c.backup_pattern}",
                 "校验码自洽" + ("，前面还有 C_INT" if c.has_neighbour_cint else "")))
+            self._by_addr[c.address] = iid
+
+    def _select_addr(self, addr: int) -> None:
+        iid = self._by_addr.get(addr)
+        if iid:
+            self._suppress = True
+            try:
+                self.tree.selection_set(iid)
+                self.tree.focus(iid)
+            finally:
+                self._suppress = False
+        self.session.select(self.kind, addr)
+
+    def _show_candidates(self, cands, requested: int, used: int) -> None:
         if not cands:
-            self.app.log(f"没找到{self.label}候选：确认填的数字和游戏里显示的一致")
+            actual = self._bound_value()
+            if actual is not None:
+                self.app.log(f"没找到{self.label}候选（按 {used} 找）；"
+                             f"工具读到的实际值是 {actual}")
+            else:
+                self.app.log(f"没找到{self.label}候选：确认填的数字和游戏里显示的一致")
+            # 一次扫空不代表原来的地址没了，别把已绑定的地址从列表里抹掉
             return
-        first = self.tree.get_children()[0]
-        self.tree.selection_set(first)
-        self.session.select(self.kind, cands[0].address)
-        self.app.log(f"{self.label}找到 {len(cands)} 个候选，已选中第一个：{cands[0]}")
+        if used != requested:
+            self.app.log(f"{self.label}：按界面值 {requested} 搜不到，但内存里实际已经是 "
+                         f"{used}（游戏界面可能还没刷新），已按 {used} 定位")
+            self._warned_stale = True
+        self._render(cands)
+        # 同一个逻辑值可能存在多份副本，换到副本上写容易被真身覆盖回去：
+        # 原地址还在候选里就继续用它。
+        keep = self.session.address(self.kind)
+        pick = next((c for c in cands if c.address == keep), cands[0])
+        self._select_addr(pick.address)
+        self.app.log(f"{self.label}找到 {len(cands)} 个候选，选中 {pick}")
 
     def _selected_addr(self) -> int | None:
         sel = self.tree.selection()
@@ -115,9 +159,23 @@ class ValuePanel(ttk.Frame):
         addr = self._selected_addr()
         if addr is not None:
             self.session.select(self.kind, addr)
+            if self._suppress:
+                return
             cur = self.session.current(self.kind)
             if cur is not None:
                 self.app.log(f"{self.label}选中 0x{addr:08X}，当前值 {cur.decoded}")
+
+    def _bound_value(self) -> int | None:
+        """工具现在能确认的「内存真实值」。
+
+        优先读已绑定地址；没绑定或解不出时，退一步按同族偏移读邻居
+        （金币和精力是同一个 C_GAME_PARAMETER 里的邻居，一方在就能拿到另一方）。
+        """
+        if self.session.address(self.kind) is not None:
+            cur = self.session.current(self.kind)
+            if cur is not None and cur.decoded is not None:
+                return cur.decoded
+        return self.session.sibling_value(self.kind)
 
     # ---------- 修改 ----------
 
@@ -138,7 +196,9 @@ class ValuePanel(ttk.Frame):
         self._apply(max(0, min(cur.decoded + delta, self.max_value)))
 
     def _apply(self, value: int) -> None:
-        addr = self._selected_addr()
+        # 列表可能被一次空扫描清掉，但 session 里绑定的地址仍然是有效的，
+        # 这时不该反过来要求用户重新选一行。
+        addr = self._selected_addr() or self.session.address(self.kind)
         if addr is None:
             messagebox.showinfo("没选目标", "先在候选列表里选一个地址")
             return
@@ -149,6 +209,10 @@ class ValuePanel(ttk.Frame):
             messagebox.showerror("写入失败", str(e))
             return
         self.app.log(f"{self.label}已改：" + msg)
+        if not self._warned_stale:
+            self._warned_stale = True
+            self.app.log(f"提示：游戏界面不一定会立刻重绘。界面还显示旧数字时，"
+                         f"直接在本页继续改就行，别照着旧数字重新定位")
         self.lock_target = value if self.lock_var.get() else None
 
     def _on_lock_toggle(self) -> None:
@@ -156,7 +220,7 @@ class ValuePanel(ttk.Frame):
             self.lock_target = None
             self.app.log(f"{self.label}锁定已关闭")
             return
-        addr = self._selected_addr()
+        addr = self._selected_addr() or self.session.address(self.kind)
         if addr is None:
             messagebox.showinfo("没选目标", "锁定前先选一个候选地址")
             self.lock_var.set(False)
@@ -172,18 +236,20 @@ class ValuePanel(ttk.Frame):
 
     def tick(self) -> None:
         if not self.session.attached or self.session.address(self.kind) is None:
+            self._fail_streak = 0
             return
         cur = self.session.current(self.kind)
-        if cur is None:
-            self.live.configure(text="当前：地址已失效")
-            self._try_recover()
-            return
-        shown = cur.decoded
+        shown = cur.decoded if cur is not None else None
         if shown is None:
-            # 堆对象会被回收/搬家，表现为原地址不再是合法 C_INT
+            # 游戏重写一个 C_INT 是分几次落盘的，读到中间态会「解不出来」。
+            # 单次失败多半是撞上了那个瞬间，先别急着判死刑。
+            self._fail_streak += 1
+            if self._fail_streak < 3:
+                return
             self.live.configure(text="当前：地址已失效")
             self._try_recover()
             return
+        self._fail_streak = 0
         self._last_good = shown
         self.live.configure(text=f"当前：{shown}")
         if self.lock_target is not None and shown != self.lock_target:
@@ -202,21 +268,28 @@ class ValuePanel(ttk.Frame):
         self._recovering = True
         self._recover_at = now
         value = self._last_good
+        old_addr = self.session.address(self.kind)
 
         def job():
             return self.session.find(self.kind, value)
 
         def done(cands) -> None:
             self._recovering = False
-            if len(cands) == 1:
-                self.session.select(self.kind, cands[0].address)
-                self.app.log(f"{self.label}地址已失效，自动重新定位到 "
-                             f"0x{cands[0].address:08X}（值 {value}）")
-            elif cands:
-                self.app.log(f"{self.label}地址失效，按 {value} 扫到 {len(cands)} 个候选，"
-                             f"请到本页签点「定位」手动挑一个")
-            else:
+            if not cands:
                 self.app.log(f"{self.label}地址失效，且按上次的值 {value} 已找不到；"
                              f"请在游戏里看一眼当前{self.label}再重新定位")
+                return
+            # 同一个逻辑值可能同时存在几份副本（实测精力的两份连校验码都一模一样）。
+            # 原地址还在候选里就继续绑它，换到副本上写很可能被真身覆盖回去。
+            keep = next((c for c in cands if c.address == old_addr), None)
+            if keep is None and len(cands) > 1:
+                self.app.log(f"{self.label}地址失效，按 {value} 扫到 {len(cands)} 个候选，"
+                             f"请到本页签点「定位」手动挑一个")
+                return
+            pick = keep or cands[0]
+            self._render(cands)
+            self._select_addr(pick.address)
+            self.app.log(f"{self.label}地址短暂不可读，已恢复绑定 "
+                         f"0x{pick.address:08X}（值 {pick.value}）")
 
         self.app.run_bg(job, done, busy=f"正在重新定位{self.label}…")

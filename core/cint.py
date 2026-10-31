@@ -72,6 +72,11 @@ ENERGY_MAX = 20             # C_GAME_PARAMETER@SetEnergy 里的 Clamp(0, 0x14)
 MONEY_MEMBER_OFFSET = 112   # m_nMoney 在 C_GAME_PARAMETER 内的偏移
 ENERGY_MEMBER_OFFSET = 96   # m_nEnergy，用于邻接确认
 
+# 实测：m_nEnergy 的地址 + 0x30 == m_nMoney 的地址（同一个 C_GAME_PARAMETER
+# 实例内的相对位置固定）。早先按 "相邻 16 字节" 推算过，那个偏移是错的，
+# 所以一度误判成「精力不能由金币地址推算」。
+ENERGY_TO_MONEY = 0x30
+
 PATTERN_HALF_MAX = 8        # SetEncryptionPattern 里 rand 的上界
 PATTERN_XOR = 7             # 令 pattern % 8 == 7，分派到 nIndex 8 = Encrytion01(纯 XOR)
 
