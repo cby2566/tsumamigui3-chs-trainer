@@ -9,7 +9,8 @@ from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from cint import (DATE_MAX, ENERGY_MAX, FERTILIZE_MAX_KAEDE,
-                  FERTILIZE_MAX_SAYOKO, MONEY_MAX, days_to_date)
+                  FERTILIZE_MAX_SAYOKO, FERTILIZE_MAX_AOI, FERTILIZE_MAX_SUMIRE,
+                  MONEY_MAX, days_to_date)
 from session import Session
 from shield_panel import ShieldPanel
 from value_panel import ValuePanel
@@ -23,8 +24,8 @@ class App(tk.Tk):
         self.session = session
         title = (session.cfg.get("title") or "数值修改器").strip()
         self.title(f"{title}  ·  System4.3 / C_INT")
-        self.geometry("860x640")
-        self.minsize(780, 560)
+        self.geometry("980x660")
+        self.minsize(900, 580)
         self._setup_style()
         self._build()
         self._queue: queue.Queue = queue.Queue()
@@ -76,6 +77,10 @@ class App(tk.Tk):
                                       FERTILIZE_MAX_SAYOKO, "，上限 250")
         self.fert4_panel = ValuePanel(nb, self, "fertilize_sayoko_3", "受精值·砂夜子③",
                                       FERTILIZE_MAX_SAYOKO, "，上限 250")
+        self.fert5_panel = ValuePanel(nb, self, "fertilize_aoi_1", "受精值·藍①",
+                                      FERTILIZE_MAX_AOI, "，上限 100")
+        self.fert6_panel = ValuePanel(nb, self, "fertilize_sumire_1", "受精值·菫①",
+                                      FERTILIZE_MAX_SUMIRE, "，上限 999")
         self.shield_panel = ShieldPanel(nb, self)
         # 「数值搜索」页签默认不挂：它扫的是裸内存值，而本作的值全是 C_INT，
         # 直接改 m_nValue 会被 Get() 的自愈逻辑改回去，改了等于没改。
@@ -89,6 +94,8 @@ class App(tk.Tk):
         nb.add(self.fert2_panel, text="  受精·砂夜子①  ")
         nb.add(self.fert3_panel, text="  受精·砂夜子②  ")
         nb.add(self.fert4_panel, text="  受精·砂夜子③  ")
+        nb.add(self.fert5_panel, text="  受精·藍①  ")
+        nb.add(self.fert6_panel, text="  受精·菫①  ")
         nb.add(self.shield_panel, text="  愛盾  ")
 
         log_frame = ttk.LabelFrame(self, text=" 日志 ", padding=(8, 4))
@@ -161,7 +168,8 @@ class App(tk.Tk):
             # 自动定位命中时，直接把地址铺到两个页签上，省掉手填数字那一步
             for panel in (self.money_panel, self.energy_panel, self.date_panel,
                           self.fert_panel, self.fert1b_panel, self.fert2_panel,
-                          self.fert3_panel, self.fert4_panel):
+                          self.fert3_panel, self.fert4_panel,
+                          self.fert5_panel, self.fert6_panel):
                 panel.adopt_auto()
 
         self.run_bg(job, done, busy="正在附加…")
@@ -171,7 +179,8 @@ class App(tk.Tk):
     def _tick(self) -> None:
         for panel in (self.money_panel, self.energy_panel, self.date_panel,
                       self.fert_panel, self.fert1b_panel, self.fert2_panel,
-                      self.fert3_panel, self.fert4_panel, self.shield_panel):
+                      self.fert3_panel, self.fert4_panel,
+                      self.fert5_panel, self.fert6_panel, self.shield_panel):
             try:
                 panel.tick()
             except Exception:                            # noqa: BLE001

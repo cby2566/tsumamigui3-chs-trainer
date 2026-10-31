@@ -47,7 +47,9 @@ DEFAULT_VAR_IDS = {
     "fertilize_kaede_2": 8294,    # 0x2066  海夕里 ②
     "fertilize_sayoko_1": 8823,   # 0x2277  砂夜子 ①，实测 60
     "fertilize_sayoko_2": 8856,   # 0x2298  砂夜子 ②，实测 0
-    "fertilize_sayoko_3": 8889,   # 0x22B9  砂夜子 ③，实测 40
+    "fertilize_sayoko_3": 8889,   # 0x22B9  砂夜子 ③
+    "fertilize_aoi_1": 9352,      # 0x2488  神野 藍 ①
+    "fertilize_sumire_1": 9884,   # 0x269C  神野 菫 ①
 }
 
 

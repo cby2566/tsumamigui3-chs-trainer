@@ -9,7 +9,8 @@ import time
 from datetime import datetime
 
 from cint import (BoolCandidate, Candidate, DATE_MAX, ENERGY_MAX,
-                  FERTILIZE_MAX_KAEDE, FERTILIZE_MAX_SAYOKO, MONEY_MAX,
+                  FERTILIZE_MAX_AOI, FERTILIZE_MAX_KAEDE, FERTILIZE_MAX_SAYOKO,
+                  FERTILIZE_MAX_SUMIRE, MONEY_MAX,
                   read_at, read_bool,
                   scan as scan_cint, scan_bool, write_bool, write_money)
 from scan import Result, Scanner
@@ -22,6 +23,8 @@ KIND_LABELS = {"money": "金币", "energy": "精力", "date": "日期",
                "fertilize_sayoko_1": "受精值·砂夜子①",
                "fertilize_sayoko_2": "受精值·砂夜子②",
                "fertilize_sayoko_3": "受精值·砂夜子③",
+               "fertilize_aoi_1": "受精值·藍①",
+               "fertilize_sumire_1": "受精值·菫①",
                "shield_kaede": "海夕里愛盾", "shield_sayoko": "砂夜子愛盾"}
 
 DEFAULT_CONFIG = {
@@ -69,6 +72,8 @@ class Session:
         "fertilize_sayoko_1": FERTILIZE_MAX_SAYOKO,
         "fertilize_sayoko_2": FERTILIZE_MAX_SAYOKO,
         "fertilize_sayoko_3": FERTILIZE_MAX_SAYOKO,
+        "fertilize_aoi_1": FERTILIZE_MAX_AOI,
+        "fertilize_sumire_1": FERTILIZE_MAX_SUMIRE,
         "shield_kaede": 1,
         "shield_sayoko": 1,
     }

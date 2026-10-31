@@ -74,6 +74,8 @@ DATE_MAX = 9999             # m_nDate 存的是「经过天数」，SSG 给的�
 FERTILIZE_MAX = 999         # 兜底上限
 FERTILIZE_MAX_KAEDE = 150   # 海夕里
 FERTILIZE_MAX_SAYOKO = 250  # 砂夜子
+FERTILIZE_MAX_AOI = 100     # 神野 藍
+FERTILIZE_MAX_SUMIRE = 999  # 神野 菫
 MONEY_MEMBER_OFFSET = 112   # m_nMoney 在 C_GAME_PARAMETER 内的偏移
 ENERGY_MEMBER_OFFSET = 96   # m_nEnergy，用于邻接确认
 
