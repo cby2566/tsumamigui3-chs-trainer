@@ -1,0 +1,7 @@
+{
+  "title": "数值修改器",
+  "game_dir": "D:/Games/YourGame",
+  "exe_name": "Game.exe",
+  "save_dir": "C:/Users/YourName/Documents/AliceSoft/YourGame/SaveData",
+  "backup_saves": true
+}
