@@ -144,7 +144,12 @@ class App(tk.Tk):
         self.logbox.pack(fill="both", expand=True)
 
     def _value_panels(self) -> tuple[ValuePanel, ...]:
-        """所有 C_INT 数值面板。愛盾是布尔开关，不参与自动定位刷新。"""
+        """所有 C_INT 数值面板。
+
+        愛盾不在其中：它不是 ValuePanel，海夕里的盾已接变量号（vmslot 里
+        shield_kaede），自动定位命中后地址进 session.addresses，
+        ShieldPanel.tick() 自己会刷新显示。
+        """
         return (self.money_panel, self.energy_panel, self.date_panel,
                 self.fert_panel, self.fert1b_panel, self.fert2_panel,
                 self.fert3_panel, self.fert4_panel,

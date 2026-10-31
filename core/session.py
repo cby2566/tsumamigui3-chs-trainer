@@ -9,11 +9,10 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from cint import (BoolCandidate, Candidate, DATE_MAX, ENERGY_MAX,
+from cint import (Candidate, DATE_MAX, ENERGY_MAX,
                   FERTILIZE_MAX_AOI, FERTILIZE_MAX_KAEDE, FERTILIZE_MAX_SAYOKO,
                   FERTILIZE_MAX_SUMIRE, MONEY_MAX,
-                  read_at, read_bool,
-                  scan as scan_cint, scan_bool, write_bool, write_money)
+                  read_at, scan as scan_cint, write_money)
 from scan import Result, Scanner
 from vmslot import DEFAULT_VAR_IDS, scan_slots
 from winmem import Process, WinMemError, find_process
@@ -79,7 +78,9 @@ def save_config(cfg: dict) -> None:
 
 class Session:
     # 受 C_INT 保护的数值：kind -> 上限（来自 ain 里的 Clamp 常量）
-    # 愛盾是布尔 C_INT，上限 1；只有海夕里、砂夜子有盾。
+    # 愛盾是三态 C_INT：0=盾破(0%) 1=半盾(50%) 2=满盾(100%)，上限 2；
+    # shield_kaede 已接变量号 8729，shield_sayoko 的变量号还没找到
+    # （没进 DEFAULT_VAR_IDS 就不参与自动定位，也不会进 missing 统计）。
     TARGETS = {
         "money": MONEY_MAX,
         "energy": ENERGY_MAX,
@@ -92,8 +93,8 @@ class Session:
         "fertilize_sayoko_3": FERTILIZE_MAX_SAYOKO,
         "fertilize_aoi_1": FERTILIZE_MAX_AOI,
         "fertilize_sumire_1": FERTILIZE_MAX_SUMIRE,
-        "shield_kaede": 1,
-        "shield_sayoko": 1,
+        "shield_kaede": 2,
+        "shield_sayoko": 2,
     }
 
     def __init__(self, cfg: dict | None = None):
@@ -101,7 +102,6 @@ class Session:
         self.proc: Process | None = None
         self.scanner: Scanner | None = None
         self.candidates: list[Candidate] = []
-        self.bool_candidates: list[BoolCandidate] = []
         self.addresses: dict[str, int | None] = {k: None for k in self.TARGETS}
         self.last_result: Result | None = None
         self._backed_up = False
@@ -130,7 +130,6 @@ class Session:
         self.proc = Process(pids[0])
         self.scanner = Scanner(self.proc)
         self.candidates = []
-        self.bool_candidates = []
         self.addresses = {k: None for k in self.TARGETS}
         self.from_var_id.clear()
         self.last_result = None
@@ -199,7 +198,6 @@ class Session:
         self.proc = None
         self.scanner = None
         self.candidates = []
-        self.bool_candidates = []
         self.addresses = {k: None for k in self.TARGETS}
 
     def require(self) -> tuple[Process, Scanner]:
@@ -260,44 +258,9 @@ class Session:
         self.candidates = scan_cint(proc, value, sc, near=near)
         return self.candidates
 
-    # ---------- 愛盾（布尔 C_INT） ----------
-
-    def find_bool_candidates(self) -> list[BoolCandidate]:
-        """扫描所有值为 0/1 的 C_INT，按「离金币近、邻域 C_INT 多」排序。"""
-        proc, sc = self.require()
-        self.backup_saves()
-        self.bool_candidates = scan_bool(proc, sc, near=self.addresses.get("money"))
-        return self.bool_candidates
-
-    def bind_bool(self, kind: str, address: int) -> int:
-        """把某个 C_INT 绑定成指定女主的愛盾；只接受解码为 0/1 的地址。"""
-        proc, _ = self.require()
-        cur = read_at(proc, address)
-        if cur is None or cur.decoded not in (0, 1):
-            raise WinMemError("这个地址不是合法的布尔 C_INT，换个候选再试")
-        self.addresses[kind] = address
-        return int(cur.decoded)
-
-    def read_bool_at(self, address: int) -> int | None:
-        proc, _ = self.require()
-        return read_bool(proc, address)
-
-    def test_bool(self, address: int, value: int) -> int:
-        """绑定前试写：只改这一个 C_INT，写后回读校验。"""
-        proc, _ = self.require()
-        if value not in (0, 1):
-            raise WinMemError("愛盾只能是 0 或 1")
-        if not write_bool(proc, address, value):
-            raise WinMemError("试写失败，地址可能已失效")
-        cur = read_at(proc, address)
-        if cur is None or cur.decoded != value:
-            raise WinMemError("试写后解码不一致，地址可能不是 C_INT")
-        return int(cur.decoded)
-
-    def set_bool(self, kind: str, on: bool) -> str:
-        if self.addresses.get(kind) is None:
-            raise WinMemError("还没绑定愛盾地址")
-        return self.set_value(kind, 1 if on else 0)
+    # ---------- 愛盾（三态 C_INT：0=盾破 1=半盾 2=满盾） ----------
+    # 读写直接走 set_value()/current()（上限 2 已在 TARGETS 里），
+    # 海夕里走变量号 8729 自动定位；砂夜子的变量号还没找到。
 
     def address(self, kind: str) -> int | None:
         return self.addresses.get(kind)
