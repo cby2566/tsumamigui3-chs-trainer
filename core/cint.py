@@ -54,6 +54,7 @@
 
 from __future__ import annotations
 
+import bisect
 import struct
 from dataclasses import dataclass
 
@@ -308,6 +309,108 @@ def scan(proc: Process, money: int, scanner: Scanner | None = None,
         return (dist, not c.has_neighbour_cint, c.address)
 
     return sorted(found.values(), key=rank)
+
+
+def scan_all(proc: Process, scanner: Scanner | None = None) -> list[Candidate]:
+    """找出所有「自洽」的 C_INT（解出来的值 == 明文值）。
+
+    注意：C_INT 子页在堆里不是连续排布的，不能按固定偏移或 16 字节步进串联；
+    这里只做全量枚举，给 scan_bool() 做邻域统计用。
+    """
+    sc = scanner or Scanner(proc)
+    sc.refresh()
+    found: dict[int, Candidate] = {}
+
+    for r in sc.regions:
+        off = 0
+        while off < r.size:
+            buf = proc.read(r.base + off, min(CHUNK, r.size - off))
+            if not buf:
+                break
+            usable = (len(buf) // 4) * 4
+            if usable >= 16:
+                b = np.frombuffer(buf[:usable], dtype="<u4")
+                # C_INT 可能落在任意 4 字节边界，四个相位都要覆盖
+                for phase in range(4):
+                    m = (len(b) - phase) // 4
+                    if m < 1:
+                        continue
+                    a = b[phase:phase + 4 * m].reshape(-1, 4)
+                    code, backup, pattern = a[:, 1], a[:, 2], a[:, 3]
+                    mask = ((code != 0) & (backup != 0)
+                            & ((pattern >> 16) < PATTERN_HALF_MAX)
+                            & ((pattern & 0xFFFF) < PATTERN_HALF_MAX))
+                    for idx in np.flatnonzero(mask):
+                        addr = r.base + off + (phase + 4 * int(idx)) * 4
+                        if addr in found:
+                            continue
+                        cand = Candidate(
+                            address=addr,
+                            value=int(a[idx, 0]), code=int(a[idx, 1]),
+                            backup=int(a[idx, 2]), pattern=int(a[idx, 3]))
+                        if cand.decoded != cand.value:
+                            continue
+                        found[addr] = cand
+            # 16 字节重叠，避免 C_INT 跨块时漏掉；dict 会去重
+            off += max(usable - 16, 4)
+    return sorted(found.values(), key=lambda c: c.address)
+
+
+@dataclass
+class BoolCandidate:
+    """一个值为 0/1 的 C_INT，附带邻域里的其他 C_INT（用于识别女主记录）。"""
+
+    address: int
+    value: int
+    neighbours: list[tuple[int, int]]
+
+    @property
+    def near_values(self) -> list[int]:
+        return [v for _, v in self.neighbours]
+
+    def __str__(self) -> str:
+        near = " ".join(str(v) for v in self.near_values[:8]) or "-"
+        return f"0x{self.address:08X}  值={self.value}  邻近={near}"
+
+
+def scan_bool(proc: Process, scanner: Scanner | None = None,
+              near: int | None = None, radius: int = 0x800) -> list[BoolCandidate]:
+    """找出所有值为 0/1 的 C_INT。
+
+    布尔值只有两种取值，单靠值扫描会命中很多无关 C_INT；所以附带
+    radius 范围内的邻域值，界面可以把「附近像不像一条女主记录」展示给用户。
+    near 通常是金币地址：全局参数对象在同一个堆区，按距离排序能让候选更集中。
+    """
+    all_cints = scan_all(proc, scanner)
+    addrs = [c.address for c in all_cints]
+    out: list[BoolCandidate] = []
+    for c in all_cints:
+        if c.decoded not in (0, 1):
+            continue
+        lo = bisect.bisect_left(addrs, c.address - radius)
+        hi = bisect.bisect_right(addrs, c.address + radius)
+        neighbours = [(n.address, n.decoded) for n in all_cints[lo:hi]
+                      if n.address != c.address]
+        out.append(BoolCandidate(c.address, int(c.decoded), neighbours))
+
+    def rank(b: BoolCandidate):
+        dist = abs(b.address - near) if near is not None else 0
+        return (dist, -len(b.neighbours), b.address)
+
+    return sorted(out, key=rank)
+
+
+def read_bool(proc: Process, address: int) -> int | None:
+    """读一个布尔 C_INT；不是 0/1 就返回 None（地址可能已失效）。"""
+    cand = read_at(proc, address)
+    if cand is None or cand.decoded not in (0, 1):
+        return None
+    return int(cand.decoded)
+
+
+def write_bool(proc: Process, address: int, value: bool | int) -> bool:
+    """写布尔 C_INT：1=开，0=关。走的是和金币完全相同的 C_INT 编码。"""
+    return write_money(proc, address, 1 if value else 0)
 
 
 def read_at(proc: Process, address: int) -> Candidate | None:

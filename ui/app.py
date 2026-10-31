@@ -1,4 +1,4 @@
-"""主窗口：进程状态 + 金币 / 精力 / 通用数值搜索。"""
+"""主窗口：进程状态 + 金币 / 精力 / 愛盾 / 通用数值搜索。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from tkinter.scrolledtext import ScrolledText
 from cint import ENERGY_MAX, MONEY_MAX
 from scan_panel import ScanPanel
 from session import Session
+from shield_panel import ShieldPanel
 from value_panel import ValuePanel
 
 TICK_MS = 200
@@ -62,8 +63,10 @@ class App(tk.Tk):
                                       "，由 SetMoney 写死")
         self.energy_panel = ValuePanel(nb, self, "energy", "精力", ENERGY_MAX,
                                        "，由 SetEnergy 写死")
+        self.shield_panel = ShieldPanel(nb, self)
         nb.add(self.money_panel, text="  金币  ")
         nb.add(self.energy_panel, text="  精力  ")
+        nb.add(self.shield_panel, text="  愛盾  ")
         nb.add(ScanPanel(nb, self), text="  数值搜索  ")
 
         log_frame = ttk.LabelFrame(self, text=" 日志 ", padding=(8, 4))
@@ -138,7 +141,7 @@ class App(tk.Tk):
     # ---------- 定时 ----------
 
     def _tick(self) -> None:
-        for panel in (self.money_panel, self.energy_panel):
+        for panel in (self.money_panel, self.energy_panel, self.shield_panel):
             try:
                 panel.tick()
             except Exception:                            # noqa: BLE001
