@@ -165,6 +165,7 @@ class ShieldPicker(tk.Toplevel):
         self.session = app.session
         self.kind = kind
         self.label = label
+        self.exclude_near = exclude_near
         # 另一位女主已经绑定时，把她记录附近的候选排掉，避免试写时误改她的盾。
         if exclude_near is not None:
             kept = [c for c in cands if abs(c.address - exclude_near) > 0x400]
@@ -260,8 +261,10 @@ class ShieldPicker(tk.Toplevel):
     def _open_wizard(self) -> None:
         """关掉列表，进入一次只测一个的向导。"""
         cands = list(self.cands)
+        exclude = self.exclude_near
         self.destroy()
-        ShieldWizard(self.master_row, self.app, self.kind, self.label, cands)
+        ShieldWizard(self.master_row, self.app, self.kind, self.label, cands,
+                     exclude_near=exclude)
 
     def _selected(self):
         sel = self.tree.selection()
@@ -349,6 +352,7 @@ class ShieldWizard(tk.Toplevel):
         self.session = app.session
         self.kind = kind
         self.label = label
+        self.exclude_near = exclude_near
         if exclude_near is not None:
             kept = [c for c in cands if abs(c.address - exclude_near) > 0x400]
             cands = kept or list(cands)
@@ -483,8 +487,10 @@ class ShieldWizard(tk.Toplevel):
 
     def _manual(self) -> None:
         cands = list(self.cands)
+        exclude = self.exclude_near
         self.destroy()
-        ShieldPicker(self.master_row, self.app, self.kind, self.label, cands)
+        ShieldPicker(self.master_row, self.app, self.kind, self.label, cands,
+                     exclude_near=exclude)
 
     def destroy(self) -> None:
         if self._after_id is not None:
