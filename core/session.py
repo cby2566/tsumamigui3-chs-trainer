@@ -78,9 +78,10 @@ def save_config(cfg: dict) -> None:
 
 class Session:
     # 受 C_INT 保护的数值：kind -> 上限（来自 ain 里的 Clamp 常量）
-    # 愛盾是三态 C_INT：0=盾破(0%) 1=半盾(50%) 2=满盾(100%)，上限 2；
-    # shield_kaede 已接变量号 8729，shield_sayoko 的变量号还没找到
-    # （没进 DEFAULT_VAR_IDS 就不参与自动定位，也不会进 missing 统计）。
+    # 愛盾是布尔 C_INT，上限 1（只有海夕里、砂夜子有盾）。
+    # 依据：C_HEROINE_PARAMETER_BASE@SetSeed 内部 Clamp(nValue, 0, nLimit)，
+    # nLimit 来自 ■ヒロイン愛盾上限取得 —— 海夕里/砂夜子(0x3F1/0x3F2)=1，
+    # 藍/菫=0；28 个存档 112 条记录里 seed 只出现过 0/1。
     TARGETS = {
         "money": MONEY_MAX,
         "energy": ENERGY_MAX,
@@ -93,8 +94,8 @@ class Session:
         "fertilize_sayoko_3": FERTILIZE_MAX_SAYOKO,
         "fertilize_aoi_1": FERTILIZE_MAX_AOI,
         "fertilize_sumire_1": FERTILIZE_MAX_SUMIRE,
-        "shield_kaede": 2,
-        "shield_sayoko": 2,
+        "shield_kaede": 1,
+        "shield_sayoko": 1,
     }
 
     def __init__(self, cfg: dict | None = None):
@@ -258,8 +259,8 @@ class Session:
         self.candidates = scan_cint(proc, value, sc, near=near)
         return self.candidates
 
-    # ---------- 愛盾（三态 C_INT：0=盾破 1=半盾 2=满盾） ----------
-    # 读写直接走 set_value()/current()（上限 2 已在 TARGETS 里），
+    # ---------- 愛盾（布尔 C_INT：0=盾破 1=盾在） ----------
+    # 读写直接走 set_value()/current()（上限 1 已在 TARGETS 里），
     # 海夕里走变量号 8729 自动定位；砂夜子的变量号还没找到。
 
     def address(self, kind: str) -> int | None:
