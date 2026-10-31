@@ -232,11 +232,13 @@ class ShieldPicker(tk.Toplevel):
             self.tree.selection_set(first[0])
             self.tree.focus(first[0])
 
-        if self.cands and all(c.value == 0 for c in self.cands):
+        zeros = sum(1 for c in self.cands if c.value == 0)
+        if zeros:
             ttk.Label(
                 self,
-                text=("当前候选全是 0，单看数字分不出来。点下面的「逐个试写（推荐）」："
-                      "工具会一次只改一个，你回游戏看盾有没有出现，回答是/不是即可。"),
+                text=(f"列表里有 {zeros} 个候选是 0，单看数字分不出来。"
+                      "点下面的「逐个试写（推荐）」：工具会一次只改一个，"
+                      "你回游戏看盾有没有出现，回答是/不是即可。"),
                 foreground="#a35a00", wraplength=770, justify="left",
             ).pack(anchor="w", padx=12, pady=(0, 4))
 
